@@ -1,5 +1,18 @@
 # 🔬 Gerador de Imagem Estroboscópica e Dados de Trajetória
 
+Este projeto foi desenvolvido como parte de um trabalho de conclusão de curso do Mestrado Profissional em Matemática em Rede Nacional (PROFMAT) na Universidade Federal de Uberlândia (UFU).
+
+---
+
+## Autoria e Orientação
+
+* **Aluno de Mestrado:** Antônio Marcos da Silva Leite
+* **Professor Orientador:** Prof. Dr. Rafael Figueiredo
+* **Instituição:** Instituto de Matemática e Estatística da Universidade Federal de Uberlândia (IME-UFU)
+* **Programa:** Mestrado Profissional em Matemática em Rede Nacional (PROFMAT)
+
+---
+
 Uma aplicação web construída com Streamlit e OpenCV para analisar o movimento de objetos em vídeos. A ferramenta gera uma imagem estroboscópica que visualiza a trajetória do objeto e exporta dados de posição frame a frame para um arquivo CSV.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
