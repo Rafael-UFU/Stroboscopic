@@ -1,0 +1,4 @@
+opencv-contrib-python
+numpy
+streamlit
+pandas # Útil para manipular os dados antes de gerar o CSV
