@@ -36,6 +36,16 @@ Uma aplicação web construída com Streamlit e OpenCV para analisar o movimento
 - **Exportação de Dados de Trajetória:** Gera um arquivo `.csv` com a posição (relativa e absoluta) do centro do objeto em cada frame do vídeo.
 - **Parâmetros Ajustáveis:** Controle o espaçamento entre as "impressões" do objeto na imagem final para diferentes efeitos visuais.
 
+---
+
+## 💡 Dicas para Melhores Resultados
+
+-   **Câmera Estritamente Estática:** Para um resultado preciso, é fundamental que o vídeo tenha sido gravado com a **câmera completamente parada**. Qualquer movimento, vibração ou ajuste de zoom na câmera durante a gravação pode interferir na lógica de rastreamento e comprometer a qualidade da imagem e dos dados gerados.
+-   **Bom Contraste:** Vídeos onde o objeto em movimento tem um bom contraste em relação ao fundo tendem a produzir resultados mais confiáveis.
+-   **Seleção Precisa:** Dedique um momento para ajustar o retângulo de seleção azul para que ele envolva o objeto de forma justa na sua posição inicial. Uma seleção precisa é a chave para um rastreamento bem-sucedido.
+
+---
+
 ## 🛠️ Tecnologias Utilizadas
 
 - **Backend:** Python
