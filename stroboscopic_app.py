@@ -128,7 +128,7 @@ if video_file:
     os.remove(tfile.name)
 
     if success:
-        st.markdown("## 2. Defina a Área de Interesse (Bounding Box)")
+        st.markdown("## 2. Defina a Área de Interesse/Alvo (Bounding Box)")
         st.info("Utilize a grade de referência abaixo para preencher os campos. **O retângulo azul será atualizado em tempo real.**")
         
         altura_total, _, _ = first_frame.shape
