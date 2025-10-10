@@ -58,9 +58,13 @@ Uma aplicação web construída com Streamlit e OpenCV para analisar o movimento
 
 ## 📂 Estrutura do Projeto
 ├── stroboscopic_app.py   # O código principal da aplicação Streamlit
+
 ├── requirements.txt      # Dependências Python (pip)
+
 ├── packages.txt          # Dependências de sistema (apt-get para o servidor)
+
 ├── LICENSE               # Licença de uso
+
 └── README.md             # Este arquivo
 
 ---
