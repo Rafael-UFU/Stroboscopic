@@ -11,7 +11,24 @@ import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 
-# --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO (MOVIMOVAS PARA O INÍCIO) ---
+# --- CSS PARA SOBREPOR O CANVAS ---
+st.markdown("""
+<style>
+.canvas-container {
+    position: relative; /* Define o container como referência para o posicionamento absoluto */
+    width: 100%;
+}
+/* O Streamlit cria um div extra, precisamos garantir que o canvas fique por cima */
+.canvas-container > div:first-child {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 10; /* Coloca o canvas na frente da imagem */
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO ---
 
 def plotar_graficos(df):
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -74,7 +91,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx) # Pula para o frame inicial
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx)
 
     tracker = cv2.TrackerCSRT_create()
     tracker.init(initial_frame, bbox_coords_opencv)
@@ -211,24 +228,26 @@ if st.session_state.step == "calibration":
     st.info("Desenhe uma linha sobre um objeto de comprimento conhecido na cena e informe o seu tamanho real.")
 
     bg_image_calib_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    bg_image_calib = Image.fromarray(bg_image_calib_np)
-    altura, largura = bg_image_calib.height, bg_image_calib.width
+    altura, largura, _ = bg_image_calib_np.shape
 
     col_canvas_calib, col_input_calib = st.columns(2)
 
     with col_canvas_calib:
         st.write("1. Desenhe a linha de referência na imagem:")
+        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
         canvas_result_calib = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=3,
             stroke_color="#FF0000",
-            background_image=bg_image_calib,
+            background_color="rgba(0, 0, 0, 0)", # Fundo transparente
             update_streamlit=True,
             height=altura,
             width=largura,
             drawing_mode="line",
             key="canvas_calib",
         )
+        st.image(bg_image_calib_np, use_container_width=True) # Imagem de fundo exibida separadamente
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_input_calib:
         if canvas_result_calib.json_data is not None and canvas_result_calib.json_data["objects"]:
@@ -253,18 +272,18 @@ if st.session_state.step == "origin_setting":
     st.info("Clique no ponto da imagem que será a origem do seu sistema de coordenadas.")
 
     bg_image_origin_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    bg_image_origin = Image.fromarray(bg_image_origin_np)
-    altura, largura = bg_image_origin.height, bg_image_origin.width
+    altura, largura, _ = bg_image_origin_np.shape
 
     col_canvas_origin, col_input_origin = st.columns(2)
 
     with col_canvas_origin:
         st.write("Clique no ponto de origem:")
+        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
         canvas_result_origin = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=2,
             stroke_color="#00FF00",
-            background_image=bg_image_origin,
+            background_color="rgba(0, 0, 0, 0)",
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -272,6 +291,8 @@ if st.session_state.step == "origin_setting":
             point_display_radius=5,
             key="canvas_origin",
         )
+        st.image(bg_image_origin_np, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     
     with col_input_origin:
         if canvas_result_origin.json_data is not None and canvas_result_origin.json_data["objects"]:
@@ -322,7 +343,7 @@ if st.session_state.step == "roi_selection":
         if w > 0 and h > 0:
             cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2)
         
-        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.', use_container_width=True)
+        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.')
 
 # --- PASSO 5: PROCESSAMENTO E RESULTADOS ---
 if st.session_state.step == "processing":
