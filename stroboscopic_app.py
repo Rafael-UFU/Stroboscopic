@@ -8,25 +8,7 @@ from io import BytesIO
 from scipy.interpolate import make_interp_spline
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
-from streamlit_drawable_canvas import st_canvas
 from PIL import Image
-
-# --- CSS PARA SOBREPOR O CANVAS ---
-st.markdown("""
-<style>
-.canvas-container {
-    position: relative; /* Define o container como referência para o posicionamento absoluto */
-    width: 100%;
-}
-/* O Streamlit cria um div extra, precisamos garantir que o canvas fique por cima */
-.canvas-container > div:first-child {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 10; /* Coloca o canvas na frente da imagem */
-}
-</style>
-""", unsafe_allow_html=True)
 
 # --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO ---
 
@@ -222,89 +204,64 @@ if st.session_state.step == "frame_selection":
     cap.release()
     os.remove(video_path)
 
-# --- PASSO 2: CALIBRAÇÃO DA ESCALA ---
+# --- PASSO 2: CALIBRAÇÃO DA ESCALA (SIMPLIFICADO) ---
 if st.session_state.step == "calibration":
     st.markdown("## Passo 3: Calibração da Escala")
-    st.info("Desenhe uma linha sobre um objeto de comprimento conhecido na cena e informe o seu tamanho real.")
+    st.info("Use a grade de referência para encontrar as coordenadas dos pontos inicial e final de um objeto de comprimento conhecido.")
 
-    bg_image_calib_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    altura, largura, _ = bg_image_calib_np.shape
+    frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame)
+    
+    col_input, col_img = st.columns(2)
 
-    col_canvas_calib, col_input_calib = st.columns(2)
+    with col_input:
+        st.markdown("#### 1. Coordenadas do Objeto de Referência")
+        p1, p2 = st.columns(2)
+        x1 = p1.number_input("Ponto 1 - X", min_value=0, step=10)
+        y1 = p2.number_input("Ponto 1 - Y", min_value=0, step=10)
+        x2 = p1.number_input("Ponto 2 - X", min_value=0, step=10)
+        y2 = p2.number_input("Ponto 2 - Y", min_value=0, step=10)
+        
+        st.markdown("#### 2. Comprimento Real")
+        length_real = st.number_input("Comprimento real do objeto (em metros)", min_value=0.01, format="%.4f")
 
-    with col_canvas_calib:
-        st.write("1. Desenhe a linha de referência na imagem:")
-        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
-        canvas_result_calib = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)",
-            stroke_width=3,
-            stroke_color="#FF0000",
-            background_color="rgba(0, 0, 0, 0)", # Fundo transparente
-            update_streamlit=True,
-            height=altura,
-            width=largura,
-            drawing_mode="line",
-            key="canvas_calib",
-        )
-        st.image(bg_image_calib_np, use_container_width=True) # Imagem de fundo exibida separadamente
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_input_calib:
-        if canvas_result_calib.json_data is not None and canvas_result_calib.json_data["objects"]:
-            st.write("2. Informe o comprimento real da linha:")
-            length_real = st.number_input("Comprimento real (em metros)", min_value=0.01, format="%.4f")
-
-            line = canvas_result_calib.json_data["objects"][0]
-            x1, y1, x2, y2 = line["left"], line["top"], line["x2"], line["y2"]
+        if st.button("Confirmar Calibração e Definir Origem", type="primary"):
             length_pixels = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            
-            st.write(f"Distância em pixels da linha desenhada: **{length_pixels:.2f} px**")
-
-            if st.button("Confirmar Calibração e Definir Origem", type="primary"):
+            if length_pixels > 0:
                 st.session_state.scale_factor = length_real / length_pixels
                 st.success(f"Fator de Escala calculado: {st.session_state.scale_factor:.6f} m/pixel")
                 st.session_state.step = "origin_setting"
                 st.rerun()
+            else:
+                st.error("A distância em pixels não pode ser zero. Verifique as coordenadas.")
+    
+    with col_img:
+        st.image(cv2.cvtColor(frame_com_grade, cv2.COLOR_BGR2RGB), caption="Use a grade para encontrar as coordenadas dos pontos.")
 
-# --- PASSO 3: DEFINIÇÃO DA ORIGEM ---
+# --- PASSO 3: DEFINIÇÃO DA ORIGEM (SIMPLIFICADO) ---
 if st.session_state.step == "origin_setting":
     st.markdown("## Passo 4: Definição da Origem (0, 0)")
-    st.info("Clique no ponto da imagem que será a origem do seu sistema de coordenadas.")
+    st.info("Use a grade de referência para encontrar as coordenadas do ponto que será a origem do sistema.")
 
-    bg_image_origin_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    altura, largura, _ = bg_image_origin_np.shape
-
-    col_canvas_origin, col_input_origin = st.columns(2)
-
-    with col_canvas_origin:
-        st.write("Clique no ponto de origem:")
-        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
-        canvas_result_origin = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)",
-            stroke_width=2,
-            stroke_color="#00FF00",
-            background_color="rgba(0, 0, 0, 0)",
-            update_streamlit=True,
-            height=altura,
-            width=largura,
-            drawing_mode="point",
-            point_display_radius=5,
-            key="canvas_origin",
-        )
-        st.image(bg_image_origin_np, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame)
     
-    with col_input_origin:
-        if canvas_result_origin.json_data is not None and canvas_result_origin.json_data["objects"]:
-            point = canvas_result_origin.json_data["objects"][0]
-            x, y = point["left"], point["top"]
-            st.write(f"Origem selecionada (em pixels): **(X: {x}, Y: {y})**")
+    col_input_orig, col_img_orig = st.columns(2)
 
-            if st.button("Confirmar Origem e Selecionar Objeto", type="primary"):
-                st.session_state.origin_coords = (x, y)
-                st.success("Origem definida com sucesso!")
-                st.session_state.step = "roi_selection"
-                st.rerun()
+    with col_input_orig:
+        st.markdown("#### Coordenadas da Origem")
+        orig_x = st.number_input("Origem - X", min_value=0, step=10)
+        orig_y = st.number_input("Origem - Y", min_value=0, step=10)
+        
+        if st.button("Confirmar Origem e Selecionar Objeto", type="primary"):
+            altura_total, _, _ = st.session_state.initial_frame.shape
+            # Converte a coordenada Y do usuário (de baixo para cima) para a do OpenCV (de cima para baixo)
+            orig_y_opencv = altura_total - orig_y
+            st.session_state.origin_coords = (orig_x, orig_y_opencv)
+            st.success(f"Origem definida em ({orig_x}, {orig_y}).")
+            st.session_state.step = "roi_selection"
+            st.rerun()
+            
+    with col_img_orig:
+        st.image(cv2.cvtColor(frame_com_grade, cv2.COLOR_BGR2RGB), caption="Use a grade para encontrar as coordenadas da origem.")
 
 # --- PASSO 4: SELEÇÃO DO OBJETO (ROI) ---
 if st.session_state.step == "roi_selection":
