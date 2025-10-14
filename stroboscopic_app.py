@@ -84,12 +84,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     carimbos_data = []
     posicao_ultimo_carimbo_px = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
     
-    # Adiciona o ponto inicial aos carimbos para ter referência
-    carimbos_data.append([
-        start_frame_idx, 
-        posicao_ultimo_carimbo_px[0], 
-        posicao_ultimo_carimbo_px[1]
-    ])
+    carimbos_data.append([start_frame_idx, posicao_ultimo_carimbo_px[0], posicao_ultimo_carimbo_px[1]])
 
     contador_frames_processados = 0
     while True:
@@ -149,15 +144,13 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     
     figura_graficos = plotar_graficos(df_final)
     
-    # Retorna também o dataframe e a lista de carimbos para a função de vetores
     return img_estrob_bytes, csv_bytes, figura_graficos, df_final, carimbos_data
 
-def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_completo, carimbos_data, origin_coords, scale_factor, scale_vetor, max_len_vetor):
+def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_completo, carimbos_data, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
     imagem_com_vetores = imagem_estroboscopica_original.copy()
     
     df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     
-    # Usa o df completo para obter o tempo e as posições em u.m.
     df_merged = pd.merge(df_carimbos, df_completo, on='frame', how='left')
 
     df_merged['vx_um_s'] = df_merged['pos_x_um'].diff() / df_merged['tempo_s'].diff()
@@ -171,7 +164,7 @@ def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_completo, car
         vel_magnitude = np.sqrt(vx**2 + vy**2)
 
         if not np.isnan(vx) and not np.isnan(vy) and vel_magnitude > 0:
-            arrow_length_pixels = min(max_len_vetor, vel_magnitude * scale_vetor) # scale_vetor agora é um multiplicador simples
+            arrow_length_pixels = min(max_len_vetor, vel_magnitude * scale_vetor)
 
             direction_x = vx / vel_magnitude
             direction_y = vy / vel_magnitude
@@ -179,7 +172,7 @@ def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_completo, car
             p_end_px = (int(p_start_px[0] + direction_x * arrow_length_pixels), 
                         int(p_start_px[1] - direction_y * arrow_length_pixels))
             
-            cv2.arrowedLine(imagem_com_vetores, p_start_px, p_end_px, (0, 0, 255), 2, tipLength=0.3)
+            cv2.arrowedLine(imagem_com_vetores, p_start_px, p_end_px, cor_vetor, espessura_vetor, tipLength=0.3)
     
     _, buffer = cv2.imencode('.PNG', imagem_com_vetores)
     return BytesIO(buffer).getvalue()
@@ -196,7 +189,6 @@ if 'step' not in st.session_state:
 if 'results' not in st.session_state:
     st.session_state.results = None
 
-# ... (O resto da interface continua o mesmo até a seção de resultados)
 # --- PASSO 0: UPLOAD ---
 if st.session_state.step == "upload":
     st.markdown("## Passo 1: Upload do Vídeo")
@@ -295,6 +287,10 @@ if st.session_state.step == "configuration":
                     obj_y_opencv = altura_total - obj_y_usuario - obj_h
                     bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
                     
+                    # CORREÇÃO DO BUG: Salva os parâmetros no estado da sessão
+                    st.session_state.origin_coords = origin_coords
+                    st.session_state.scale_factor = scale_factor
+                    
                     st.session_state.results = processar_video(
                         st.session_state.video_bytes, st.session_state.initial_frame,
                         st.session_state.current_frame_idx, bbox_opencv, fator_dist,
@@ -340,23 +336,27 @@ if st.session_state.step == "configuration":
                 st.dataframe(df_final)
                 st.download_button("💾 Baixar Dados (CSV)", resultado_csv, "dados_trajetoria.csv", "text/csv", use_container_width=True)
 
-            # --- NOVA SEÇÃO DE ANÁLISE ADICIONAL ---
             st.markdown("---")
             with st.expander("Análise Adicional: Vetores de Velocidade"):
                 st.info("Ajuste os parâmetros e clique no botão para gerar uma imagem com os vetores de velocidade.")
                 
-                vec_col1, vec_col2 = st.columns(2)
-                scale_vetor = vec_col1.slider("Escala do Vetor", 1, 200, 50, help="Multiplicador para o comprimento dos vetores. Valores maiores = vetores mais longos.")
-                max_len_vetor = vec_col2.slider("Comprimento Máximo (pixels)", 10, 200, 100, help="Limite máximo para o tamanho de um vetor na imagem.")
+                # Mapeamento de cores
+                cores_bgr = {"Vermelho": (0, 0, 255), "Azul": (255, 0, 0), "Amarelo": (0, 255, 255), "Ciano": (255, 255, 0)}
+
+                vec_col1, vec_col2, vec_col3 = st.columns(3)
+                cor_nome = vec_col1.selectbox("Cor do Vetor", options=list(cores_bgr.keys()))
+                espessura_vetor = vec_col2.slider("Espessura do Vetor (px)", 1, 5, 2)
+                
+                scale_vetor_col, max_len_col = st.columns(2)
+                scale_vetor = scale_vetor_col.slider("Escala do Vetor", 1, 200, 50, help="Multiplicador para o comprimento dos vetores. Valores maiores = vetores mais longos.")
+                max_len_vetor = max_len_col.slider("Comprimento Máximo (px)", 10, 200, 100, help="Limite máximo para o tamanho de um vetor na imagem.")
                 
                 if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
-                    # Chama a nova função de desenho, que é muito mais rápida
                     imagem_estroboscopica_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
                     
                     img_vetores_bytes = desenhar_vetores_velocidade(
                         imagem_estroboscopica_original, df_final, carimbos_data,
-                        st.session_state.origin_coords, st.session_state.scale_factor,
-                        scale_vetor, max_len_vetor
+                        scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor
                     )
                     st.session_state.img_vetores = img_vetores_bytes
                 
