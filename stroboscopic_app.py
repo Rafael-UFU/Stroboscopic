@@ -11,31 +11,6 @@ import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 
-# --- CSS PARA SOBREPOR O CANVAS ---
-st.markdown("""
-<style>
-/* Estilo para o container da imagem e canvas */
-.image-and-canvas-container {
-    position: relative;
-    display: inline-block; /* Para que o container se ajuste à imagem */
-}
-
-/* Estilo para a imagem dentro do container */
-.image-and-canvas-container img {
-    display: block; /* Remove espaços extras abaixo da imagem */
-}
-
-/* Estilo para o canvas dentro do container, sobreposto à imagem */
-.image-and-canvas-container canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1; /* Garante que o canvas fique por cima da imagem */
-}
-</style>
-""", unsafe_allow_html=True)
-
-
 # --- FUNÇÕES DE LÓGICA E PROCESSAMENTO ---
 # (As funções de plotar gráficos e processar vídeo foram movidas para o final para melhor organização)
 
@@ -117,21 +92,17 @@ if st.session_state.step == "calibration":
 
     with col_canvas_calib:
         st.write("1. Desenhe a linha de referência na imagem:")
-        with st.container():
-            st.markdown('<div class="image-and-canvas-container">', unsafe_allow_html=True)
-            st.image(bg_image_calib) # <-- CORREÇÃO AQUI
-            canvas_result_calib = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",
-                stroke_width=3,
-                stroke_color="#FF0000",
-                background_color="rgba(0, 0, 0, 0)",
-                update_streamlit=True,
-                height=altura,
-                width=largura,
-                drawing_mode="line",
-                key="canvas_calib",
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
+        canvas_result_calib = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.3)",
+            stroke_width=3,
+            stroke_color="#FF0000",
+            background_image=bg_image_calib, # <-- VOLTAMOS A USAR O MÉTODO DIRETO
+            update_streamlit=True,
+            height=altura,
+            width=largura,
+            drawing_mode="line",
+            key="canvas_calib",
+        )
 
     with col_input_calib:
         if canvas_result_calib.json_data is not None and canvas_result_calib.json_data["objects"]:
@@ -163,22 +134,18 @@ if st.session_state.step == "origin_setting":
 
     with col_canvas_origin:
         st.write("Clique no ponto de origem:")
-        with st.container():
-            st.markdown('<div class="image-and-canvas-container">', unsafe_allow_html=True)
-            st.image(bg_image_origin) # <-- CORREÇÃO AQUI
-            canvas_result_origin = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",
-                stroke_width=2,
-                stroke_color="#00FF00",
-                background_color="rgba(0, 0, 0, 0)",
-                update_streamlit=True,
-                height=altura,
-                width=largura,
-                drawing_mode="point",
-                point_display_radius=5,
-                key="canvas_origin",
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
+        canvas_result_origin = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.3)",
+            stroke_width=2,
+            stroke_color="#00FF00",
+            background_image=bg_image_origin, # <-- VOLTAMOS A USAR O MÉTODO DIRETO
+            update_streamlit=True,
+            height=altura,
+            width=largura,
+            drawing_mode="point",
+            point_display_radius=5,
+            key="canvas_origin",
+        )
     
     with col_input_origin:
         if canvas_result_origin.json_data is not None and canvas_result_origin.json_data["objects"]:
@@ -200,7 +167,7 @@ if st.session_state.step == "roi_selection":
     frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame, intervalo=100)
     # Desenha o marcador da origem
     orig_x, orig_y = int(st.session_state.origin_coords[0]), int(st.session_state.origin_coords[1])
-    cv2.circle(frame_com_grade, (orig_x, orig_y), 10, (255, 0, 255), -1)
+    cv2.circle(frame_com_grade, (orig_x, orig_y), 10, (255, 0, 255), -1) # Círculo magenta
     cv2.putText(frame_com_grade, "(0,0)", (orig_x + 15, orig_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
     
     altura_total, _, _ = frame_com_grade.shape
@@ -228,7 +195,7 @@ if st.session_state.step == "roi_selection":
     with col_preview:
         frame_para_preview = frame_com_grade.copy()
         if w > 0 and h > 0:
-            cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2)
+            cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2) # Retângulo azul
         
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.', use_container_width=True)
 
@@ -262,6 +229,7 @@ if st.session_state.step == "processing":
         st.download_button("💾 Baixar Dados (CSV)", resultado_csv, "dados_trajetoria.csv", "text/csv", use_container_width=True)
         
         if st.button("Analisar outro vídeo"):
+            # Limpa o estado da sessão para recomeçar
             for key in st.session_state.keys():
                 del st.session_state[key]
             st.rerun()
@@ -269,11 +237,13 @@ if st.session_state.step == "processing":
         st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
 
 # --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO ---
+
 def plotar_graficos(df):
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 15))
     fig.tight_layout(pad=5.0)
 
+    # Gráfico 1: Trajetória
     x, y = df['pos_x_m'].to_numpy(), df['pos_y_m'].to_numpy()
     ax1.scatter(x, y, label='Pontos Observados', color='blue', alpha=0.6, s=10)
     if len(x) > 3:
@@ -291,12 +261,14 @@ def plotar_graficos(df):
     ax1.legend()
     ax1.set_aspect('equal', adjustable='box')
 
+    # Gráfico 2: Velocidade
     ax2.plot(df['tempo_s'], df['velocidade_m_s'], label='Velocidade', color='green')
     ax2.set_title('Magnitude da Velocidade vs. Tempo', fontsize=16)
     ax2.set_xlabel('Tempo (s)')
     ax2.set_ylabel('Velocidade (m/s)')
     ax2.legend()
 
+    # Gráfico 3: Aceleração
     ax3.plot(df['tempo_s'], df['aceleracao_m_s2'], label='Aceleração', color='purple')
     ax3.set_title('Magnitude da Aceleração vs. Tempo', fontsize=16)
     ax3.set_xlabel('Tempo (s)')
@@ -327,7 +299,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx) # Pula para o frame inicial
 
     tracker = cv2.TrackerCSRT_create()
     tracker.init(initial_frame, bbox_coords_opencv)
@@ -353,6 +325,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
             centro_atual = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
             raw_data.append([frame_atual_idx, centro_atual[0], centro_atual[1]])
             
+            # O fator de distância para a imagem estroboscópica agora é em metros
             dist_pixels = np.sqrt((centro_atual[0] - posicao_ultimo_carimbo[0])**2 + (centro_atual[1] - posicao_ultimo_carimbo[1])**2)
             if dist_pixels * scale_factor >= fator_distancia:
                 (x, y, w, h) = [int(v) for v in bbox_atual]
@@ -371,9 +344,11 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     df = pd.DataFrame(raw_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df['tempo_s'] = (df['frame'] - start_frame_idx) / fps
     
+    # Converte para o sistema de coordenadas calibrado
     df['pos_x_m'] = (df['pos_x_px'] - origin_coords[0]) * scale_factor
-    df['pos_y_m'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
+    df['pos_y_m'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor # Inverte Y
     
+    # Cinemática
     df['velocidade_m_s'] = np.sqrt(df['pos_x_m'].diff()**2 + df['pos_y_m'].diff()**2) / df['tempo_s'].diff()
     window_len = min(51, len(df) - 2 if len(df) % 2 == 0 else len(df) - 1)
     if window_len > 3:
