@@ -10,15 +10,6 @@ from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
-import base64 # <-- Importação adicionada
-
-# --- NOVA FUNÇÃO AUXILIAR ---
-def image_to_data_url(img: Image.Image) -> str:
-    """Converte uma imagem PIL para um Data URL em formato base64."""
-    buffered = BytesIO()
-    img.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
-    return f"data:image/png;base64,{img_str}"
 
 # --- FUNÇÕES DE LÓGICA E PROCESSAMENTO ---
 # (As funções de plotar gráficos e processar vídeo foram movidas para o final para melhor organização)
@@ -32,7 +23,6 @@ st.markdown("### Uma ferramenta para extrair dados cinemáticos de vídeos com c
 # Inicializa o estado da sessão para controlar o fluxo
 if 'step' not in st.session_state:
     st.session_state.step = "upload"
-# (O resto da inicialização do session_state continua igual)
 if 'initial_frame' not in st.session_state:
     st.session_state.initial_frame = None
 if 'video_bytes' not in st.session_state:
@@ -106,8 +96,7 @@ if st.session_state.step == "calibration":
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=3,
             stroke_color="#FF0000",
-            # --- CORREÇÃO AQUI ---
-            background_image=image_to_data_url(bg_image_calib),
+            background_image=bg_image_calib, # <-- MUDANÇA PRINCIPAL: Passando o objeto PIL diretamente
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -149,8 +138,7 @@ if st.session_state.step == "origin_setting":
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=2,
             stroke_color="#00FF00",
-            # --- CORREÇÃO AQUI ---
-            background_image=image_to_data_url(bg_image_origin),
+            background_image=bg_image_origin, # <-- MUDANÇA PRINCIPAL: Passando o objeto PIL diretamente
             update_streamlit=True,
             height=altura,
             width=largura,
