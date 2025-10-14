@@ -94,7 +94,7 @@ if st.session_state.step == "calibration":
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=3,
             stroke_color="#FF0000",
-            background_image=st.image(bg_image_calib, use_column_width='auto'),
+            background_image=bg_image_calib, # CORREÇÃO AQUI
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -135,7 +135,7 @@ if st.session_state.step == "origin_setting":
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=2,
             stroke_color="#00FF00",
-            background_image=st.image(bg_image_origin, use_column_width='auto'),
+            background_image=bg_image_origin, # CORREÇÃO AQUI
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -181,7 +181,7 @@ if st.session_state.step == "roi_selection":
         bbox_opencv = (x, y_opencv, w, h)
         
         st.markdown("#### Parâmetros de Geração")
-        fator_dist = st.slider("Espaçamento na Imagem Estroboscópica", 0.1, 3.0, 0.8, 0.1)
+        fator_dist = st.slider("Espaçamento na Imagem Estroboscópica", 0.1, 3.0, 0.8, 0.1, help="Define o quão longe o objeto precisa se mover para ser 'carimbado' na imagem final.")
 
         if st.button("🚀 Iniciar Análise Completa", type="primary", use_container_width=True):
             st.session_state.bbox = bbox_opencv
@@ -322,6 +322,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
             centro_atual = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
             raw_data.append([frame_atual_idx, centro_atual[0], centro_atual[1]])
             
+            # O fator de distância para a imagem estroboscópica agora é em metros
             dist_pixels = np.sqrt((centro_atual[0] - posicao_ultimo_carimbo[0])**2 + (centro_atual[1] - posicao_ultimo_carimbo[1])**2)
             if dist_pixels * scale_factor >= fator_distancia:
                 (x, y, w, h) = [int(v) for v in bbox_atual]
