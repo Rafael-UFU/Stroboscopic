@@ -11,24 +11,134 @@ import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 
-# --- CSS PARA SOBREPOR O CANVAS ---
-st.markdown("""
-<style>
-.canvas-container {
-    position: relative;
-    width: 100%;
-}
-.canvas-container > div:first-child {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1; /* Garante que o canvas fique por cima */
-}
-</style>
-""", unsafe_allow_html=True)
+# --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO (MOVIMOVAS PARA O INÍCIO) ---
 
-# --- FUNÇÕES DE LÓGICA E PROCESSAMENTO ---
-# (As funções de plotar gráficos e processar vídeo foram movidas para o final para melhor organização)
+def plotar_graficos(df):
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 15))
+    fig.tight_layout(pad=5.0)
+
+    # Gráfico 1: Trajetória
+    x, y = df['pos_x_m'].to_numpy(), df['pos_y_m'].to_numpy()
+    ax1.scatter(x, y, label='Pontos Observados', color='blue', alpha=0.6, s=10)
+    if len(x) > 3:
+        try:
+            sorted_indices = np.argsort(x)
+            x_s, y_s = x[sorted_indices], y[sorted_indices]
+            X_Y_Spline = make_interp_spline(x_s, y_s)
+            X_, Y_ = np.linspace(x_s.min(), x_s.max(), 500), X_Y_Spline(np.linspace(x_s.min(), x_s.max(), 500))
+            ax1.plot(X_, Y_, label='Curva de Trajetória (Spline)', color='red', linewidth=2)
+        except:
+            ax1.plot(x, y, label='Linha de Trajetória', color='red', linewidth=2, alpha=0.8)
+    ax1.set_title('Gráfico de Trajetória', fontsize=16)
+    ax1.set_xlabel('Posição X (m)')
+    ax1.set_ylabel('Posição Y (m)')
+    ax1.legend()
+    ax1.set_aspect('equal', adjustable='box')
+
+    # Gráfico 2: Velocidade
+    ax2.plot(df['tempo_s'], df['velocidade_m_s'], label='Velocidade', color='green')
+    ax2.set_title('Magnitude da Velocidade vs. Tempo', fontsize=16)
+    ax2.set_xlabel('Tempo (s)')
+    ax2.set_ylabel('Velocidade (m/s)')
+    ax2.legend()
+
+    # Gráfico 3: Aceleração
+    ax3.plot(df['tempo_s'], df['aceleracao_m_s2'], label='Aceleração', color='purple')
+    ax3.set_title('Magnitude da Aceleração vs. Tempo', fontsize=16)
+    ax3.set_xlabel('Tempo (s)')
+    ax3.set_ylabel('Aceleração (m/s²)')
+    ax3.legend()
+
+    return fig
+
+def desenhar_grade_cartesiana(frame, intervalo=100):
+    frame_com_grade = frame.copy()
+    altura, largura, _ = frame_com_grade.shape
+    cor_linha, cor_texto = (0, 255, 0, 200), (0, 255, 0)
+    fonte, escala_fonte = cv2.FONT_HERSHEY_SIMPLEX, 0.5
+    for x in range(intervalo, largura, intervalo):
+        cv2.line(frame_com_grade, (x, 0), (x, altura), cor_linha, 1)
+        cv2.putText(frame_com_grade, str(x), (x - 10, altura - 10), fonte, escala_fonte, cor_texto, 1)
+    for y in range(intervalo, altura, intervalo):
+        pos_y_imagem = altura - y
+        cv2.line(frame_com_grade, (0, pos_y_imagem), (largura, pos_y_imagem), cor_linha, 1)
+        cv2.putText(frame_com_grade, str(y), (10, pos_y_imagem + 5), fonte, escala_fonte, cor_texto, 1)
+    return frame_com_grade
+
+def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element):
+    tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tfile.write(video_bytes)
+    video_path = tfile.name
+
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx) # Pula para o frame inicial
+
+    tracker = cv2.TrackerCSRT_create()
+    tracker.init(initial_frame, bbox_coords_opencv)
+
+    imagem_estroboscopica = initial_frame.copy()
+    altura_frame, largura_frame, _ = initial_frame.shape
+    
+    raw_data = []
+    posicao_ultimo_carimbo = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
+
+    contador_frames_processados = 0
+    while True:
+        frame_atual_idx = start_frame_idx + contador_frames_processados
+        if frame_atual_idx >= total_frames: break
+
+        success, frame_atual = cap.read()
+        if not success: break
+        
+        status_text_element.text(f"Processando frame {frame_atual_idx}/{total_frames-1}...")
+        
+        success_track, bbox_atual = tracker.update(frame_atual)
+        if success_track:
+            centro_atual = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
+            raw_data.append([frame_atual_idx, centro_atual[0], centro_atual[1]])
+            
+            dist_pixels = np.sqrt((centro_atual[0] - posicao_ultimo_carimbo[0])**2 + (centro_atual[1] - posicao_ultimo_carimbo[1])**2)
+            if dist_pixels * scale_factor >= fator_distancia:
+                (x, y, w, h) = [int(v) for v in bbox_atual]
+                x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
+                regiao = frame_atual[y_s:y_e, x_s:x_e]
+                if regiao.size > 0:
+                    imagem_estroboscopica[y_s:y_e, x_s:x_e] = regiao
+                posicao_ultimo_carimbo = centro_atual
+        contador_frames_processados += 1
+    
+    cap.release()
+    os.remove(video_path)
+    
+    if not raw_data: return None, None, None
+    
+    df = pd.DataFrame(raw_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
+    df['tempo_s'] = (df['frame'] - start_frame_idx) / fps
+    
+    df['pos_x_m'] = (df['pos_x_px'] - origin_coords[0]) * scale_factor
+    df['pos_y_m'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
+    
+    df['velocidade_m_s'] = np.sqrt(df['pos_x_m'].diff()**2 + df['pos_y_m'].diff()**2) / df['tempo_s'].diff()
+    window_len = min(51, len(df) - 2 if len(df) % 2 == 0 else len(df) - 1)
+    if window_len > 3:
+        df['vel_suavizada'] = savgol_filter(df['velocidade_m_s'].fillna(0), window_len, 3)
+    else:
+        df['vel_suavizada'] = df['velocidade_m_s']
+    df['aceleracao_m_s2'] = df['vel_suavizada'].diff() / df['tempo_s'].diff()
+    
+    df_final = df[['frame', 'tempo_s', 'pos_x_m', 'pos_y_m', 'velocidade_m_s', 'aceleracao_m_s2']].copy().fillna(0)
+
+    status_text_element.success(f"Processamento concluído!")
+    
+    csv_bytes = df_final.to_csv(index=False).encode('utf-8')
+    _, buffer = cv2.imencode('.PNG', imagem_estroboscopica)
+    img_bytes = BytesIO(buffer).getvalue()
+    figura_graficos = plotar_graficos(df_final)
+
+    return img_bytes, csv_bytes, figura_graficos
 
 # --- INTERFACE DA APLICAÇÃO ---
 
@@ -101,26 +211,24 @@ if st.session_state.step == "calibration":
     st.info("Desenhe uma linha sobre um objeto de comprimento conhecido na cena e informe o seu tamanho real.")
 
     bg_image_calib_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    altura, largura, _ = bg_image_calib_np.shape
+    bg_image_calib = Image.fromarray(bg_image_calib_np)
+    altura, largura = bg_image_calib.height, bg_image_calib.width
 
     col_canvas_calib, col_input_calib = st.columns(2)
 
     with col_canvas_calib:
         st.write("1. Desenhe a linha de referência na imagem:")
-        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
         canvas_result_calib = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=3,
             stroke_color="#FF0000",
-            background_color="rgba(0, 0, 0, 0)", # Fundo transparente
+            background_image=bg_image_calib,
             update_streamlit=True,
             height=altura,
             width=largura,
             drawing_mode="line",
             key="canvas_calib",
         )
-        st.image(bg_image_calib_np, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_input_calib:
         if canvas_result_calib.json_data is not None and canvas_result_calib.json_data["objects"]:
@@ -145,18 +253,18 @@ if st.session_state.step == "origin_setting":
     st.info("Clique no ponto da imagem que será a origem do seu sistema de coordenadas.")
 
     bg_image_origin_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    altura, largura, _ = bg_image_origin_np.shape
+    bg_image_origin = Image.fromarray(bg_image_origin_np)
+    altura, largura = bg_image_origin.height, bg_image_origin.width
 
     col_canvas_origin, col_input_origin = st.columns(2)
 
     with col_canvas_origin:
         st.write("Clique no ponto de origem:")
-        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
         canvas_result_origin = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=2,
             stroke_color="#00FF00",
-            background_color="rgba(0, 0, 0, 0)",
+            background_image=bg_image_origin,
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -164,8 +272,6 @@ if st.session_state.step == "origin_setting":
             point_display_radius=5,
             key="canvas_origin",
         )
-        st.image(bg_image_origin_np, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
     
     with col_input_origin:
         if canvas_result_origin.json_data is not None and canvas_result_origin.json_data["objects"]:
@@ -216,7 +322,7 @@ if st.session_state.step == "roi_selection":
         if w > 0 and h > 0:
             cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2)
         
-        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.')
+        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.', use_container_width=True)
 
 # --- PASSO 5: PROCESSAMENTO E RESULTADOS ---
 if st.session_state.step == "processing":
@@ -253,132 +359,3 @@ if st.session_state.step == "processing":
             st.rerun()
     else:
         st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
-
-# --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO ---
-
-def plotar_graficos(df):
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 15))
-    fig.tight_layout(pad=5.0)
-
-    # Gráfico 1: Trajetória
-    x, y = df['pos_x_m'].to_numpy(), df['pos_y_m'].to_numpy()
-    ax1.scatter(x, y, label='Pontos Observados', color='blue', alpha=0.6, s=10)
-    if len(x) > 3:
-        try:
-            sorted_indices = np.argsort(x)
-            x_s, y_s = x[sorted_indices], y[sorted_indices]
-            X_Y_Spline = make_interp_spline(x_s, y_s)
-            X_, Y_ = np.linspace(x_s.min(), x_s.max(), 500), X_Y_Spline(np.linspace(x_s.min(), x_s.max(), 500))
-            ax1.plot(X_, Y_, label='Curva de Trajetória (Spline)', color='red', linewidth=2)
-        except:
-            ax1.plot(x, y, label='Linha de Trajetória', color='red', linewidth=2, alpha=0.8)
-    ax1.set_title('Gráfico de Trajetória', fontsize=16)
-    ax1.set_xlabel('Posição X (m)')
-    ax1.set_ylabel('Posição Y (m)')
-    ax1.legend()
-    ax1.set_aspect('equal', adjustable='box')
-
-    # Gráfico 2: Velocidade
-    ax2.plot(df['tempo_s'], df['velocidade_m_s'], label='Velocidade', color='green')
-    ax2.set_title('Magnitude da Velocidade vs. Tempo', fontsize=16)
-    ax2.set_xlabel('Tempo (s)')
-    ax2.set_ylabel('Velocidade (m/s)')
-    ax2.legend()
-
-    # Gráfico 3: Aceleração
-    ax3.plot(df['tempo_s'], df['aceleracao_m_s2'], label='Aceleração', color='purple')
-    ax3.set_title('Magnitude da Aceleração vs. Tempo', fontsize=16)
-    ax3.set_xlabel('Tempo (s)')
-    ax3.set_ylabel('Aceleração (m/s²)')
-    ax3.legend()
-
-    return fig
-
-def desenhar_grade_cartesiana(frame, intervalo=100):
-    frame_com_grade = frame.copy()
-    altura, largura, _ = frame_com_grade.shape
-    cor_linha, cor_texto = (0, 255, 0, 200), (0, 255, 0)
-    fonte, escala_fonte = cv2.FONT_HERSHEY_SIMPLEX, 0.5
-    for x in range(intervalo, largura, intervalo):
-        cv2.line(frame_com_grade, (x, 0), (x, altura), cor_linha, 1)
-        cv2.putText(frame_com_grade, str(x), (x - 10, altura - 10), fonte, escala_fonte, cor_texto, 1)
-    for y in range(intervalo, altura, intervalo):
-        pos_y_imagem = altura - y
-        cv2.line(frame_com_grade, (0, pos_y_imagem), (largura, pos_y_imagem), cor_linha, 1)
-        cv2.putText(frame_com_grade, str(y), (10, pos_y_imagem + 5), fonte, escala_fonte, cor_texto, 1)
-    return frame_com_grade
-
-def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element):
-    tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    tfile.write(video_bytes)
-    video_path = tfile.name
-
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx)
-
-    tracker = cv2.TrackerCSRT_create()
-    tracker.init(initial_frame, bbox_coords_opencv)
-
-    imagem_estroboscopica = initial_frame.copy()
-    altura_frame, largura_frame, _ = initial_frame.shape
-    
-    raw_data = []
-    posicao_ultimo_carimbo = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
-
-    contador_frames_processados = 0
-    while True:
-        frame_atual_idx = start_frame_idx + contador_frames_processados
-        if frame_atual_idx >= total_frames: break
-
-        success, frame_atual = cap.read()
-        if not success: break
-        
-        status_text_element.text(f"Processando frame {frame_atual_idx}/{total_frames-1}...")
-        
-        success_track, bbox_atual = tracker.update(frame_atual)
-        if success_track:
-            centro_atual = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
-            raw_data.append([frame_atual_idx, centro_atual[0], centro_atual[1]])
-            
-            dist_pixels = np.sqrt((centro_atual[0] - posicao_ultimo_carimbo[0])**2 + (centro_atual[1] - posicao_ultimo_carimbo[1])**2)
-            if dist_pixels * scale_factor >= fator_distancia:
-                (x, y, w, h) = [int(v) for v in bbox_atual]
-                x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
-                regiao = frame_atual[y_s:y_e, x_s:x_e]
-                if regiao.size > 0:
-                    imagem_estroboscopica[y_s:y_e, x_s:x_e] = regiao
-                posicao_ultimo_carimbo = centro_atual
-        contador_frames_processados += 1
-    
-    cap.release()
-    os.remove(video_path)
-    
-    if not raw_data: return None, None, None
-    
-    df = pd.DataFrame(raw_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
-    df['tempo_s'] = (df['frame'] - start_frame_idx) / fps
-    
-    df['pos_x_m'] = (df['pos_x_px'] - origin_coords[0]) * scale_factor
-    df['pos_y_m'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
-    
-    df['velocidade_m_s'] = np.sqrt(df['pos_x_m'].diff()**2 + df['pos_y_m'].diff()**2) / df['tempo_s'].diff()
-    window_len = min(51, len(df) - 2 if len(df) % 2 == 0 else len(df) - 1)
-    if window_len > 3:
-        df['vel_suavizada'] = savgol_filter(df['velocidade_m_s'].fillna(0), window_len, 3)
-    else:
-        df['vel_suavizada'] = df['velocidade_m_s']
-    df['aceleracao_m_s2'] = df['vel_suavizada'].diff() / df['tempo_s'].diff()
-    
-    df_final = df[['frame', 'tempo_s', 'pos_x_m', 'pos_y_m', 'velocidade_m_s', 'aceleracao_m_s2']].copy().fillna(0)
-
-    status_text_element.success(f"Processamento concluído!")
-    
-    csv_bytes = df_final.to_csv(index=False).encode('utf-8')
-    _, buffer = cv2.imencode('.PNG', imagem_estroboscopica)
-    img_bytes = BytesIO(buffer).getvalue()
-    figura_graficos = plotar_graficos(df_final)
-
-    return img_bytes, csv_bytes, figura_graficos
