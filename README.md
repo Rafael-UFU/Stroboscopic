@@ -65,6 +65,8 @@ Uma aplicação web construída com Streamlit e OpenCV para analisar o movimento
 
 ├── LICENSE               # Licença de uso
 
+├── runtime.txt           # Solução para definir uma versão estável do Python
+
 └── README.md             # Este arquivo
 
 ---
