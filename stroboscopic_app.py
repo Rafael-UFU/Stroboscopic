@@ -9,7 +9,7 @@ from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-# --- 6) ESTILO DOS BOTÕES (CSS) ---
+# --- ESTILO DOS BOTÕES (CSS) ---
 st.markdown("""
 <style>
 /* Botões de Ação (Azul) */
@@ -49,7 +49,6 @@ st.markdown("""
 
 def plotar_graficos(df):
     plt.style.use('seaborn-v0_8-whitegrid')
-    # --- 5) NOVO LAYOUT DE GRÁFICOS (2 LINHAS) ---
     fig = plt.figure(figsize=(15, 12))
     gs = gridspec.GridSpec(2, 2, figure=fig)
     fig.tight_layout(pad=6.0)
@@ -154,17 +153,38 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     cap.release(), os.remove(video_path)
     if len(carimbos_data) < 2: return None
     
-    # --- 3) CÁLCULO DA VELOCIDADE CORRIGIDO (BASEADO NOS CARIMBOS) ---
+    # --- CÁLCULO DA VELOCIDADE COM DIFERENÇAS FINITAS DE SEGUNDA ORDEM ---
     df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df_carimbos['tempo_s'] = (df_carimbos['frame'] - start_frame_idx) / fps
     df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
     df_carimbos['pos_y_um'] = -(df_carimbos['pos_y_px'] - origin_coords[1]) * scale_factor
     
-    delta_t = df_carimbos['tempo_s'].diff()
-    df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
-    df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / delta_t
+    # Prepara vetores numpy para cálculo
+    t = df_carimbos['tempo_s'].to_numpy()
+    x = df_carimbos['pos_x_um'].to_numpy()
+    y = df_carimbos['pos_y_um'].to_numpy()
     
-    # Define o primeiro ponto da velocidade como zero
+    vx = np.zeros_like(x)
+    vy = np.zeros_like(y)
+
+    # Ponto inicial (diferença progressiva de primeira ordem)
+    if len(t) > 1:
+        vx[0] = (x[1] - x[0]) / (t[1] - t[0])
+        vy[0] = (y[1] - y[0]) / (t[1] - t[0])
+
+    # Pontos intermediários (diferença central de segunda ordem)
+    for i in range(1, len(t) - 1):
+        vx[i] = (x[i+1] - x[i-1]) / (t[i+1] - t[i-1])
+        vy[i] = (y[i+1] - y[i-1]) / (t[i+1] - t[i-1])
+
+    # Ponto final (diferença regressiva de primeira ordem)
+    if len(t) > 1:
+        vx[-1] = (x[-1] - x[-2]) / (t[-1] - t[-2])
+        vy[-1] = (y[-1] - y[-2]) / (t[-1] - t[-2])
+
+    df_carimbos['vx_um_s'] = vx
+    df_carimbos['vy_um_s'] = vy
+    
     df_final = df_carimbos.fillna(0)
     
     status_text_element.success(f"Processamento concluído! {len(df_final)} pontos de dados analisados.")
@@ -174,13 +194,12 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     
     figura_graficos = plotar_graficos(df_final)
     
-    # A função retorna o df_final que agora é baseado nos carimbos
     return img_estrob_bytes, df_final, figura_graficos, carimbos_data
 
 def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_analisado, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
     imagem_com_vetores = imagem_estroboscopica_original.copy()
 
-    for i in range(1, len(df_analisado)):
+    for i in range(len(df_analisado)): # Itera sobre todos os pontos
         p_start_px = (int(df_analisado.loc[i, 'pos_x_px']), int(df_analisado.loc[i, 'pos_y_px']))
         vx, vy = df_analisado.loc[i, 'vx_um_s'], df_analisado.loc[i, 'vy_um_s']
         vel_magnitude = np.sqrt(vx**2 + vy**2)
@@ -203,14 +222,12 @@ st.markdown("### Uma ferramenta para extrair dados cinemáticos de vídeos com c
 if 'step' not in st.session_state: st.session_state.step = "upload"
 if 'results' not in st.session_state: st.session_state.results = None
 
-# --- PASSO 0: UPLOAD ---
 if st.session_state.step == "upload":
     col1, col2 = st.columns([3, 1])
     with col1:
         st.markdown("## Passo 1: Upload do Vídeo")
     with col2:
         if st.button("🔄 Analisar novo vídeo"):
-            # Limpa tudo para um recomeço limpo
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
@@ -222,7 +239,6 @@ if st.session_state.step == "upload":
         st.session_state.results = None 
         st.rerun()
 
-# --- PASSO 1: SELEÇÃO DO FRAME INICIAL ---
 if st.session_state.step == "frame_selection":
     st.markdown("## Passo 2: Seleção do Frame Inicial")
     st.info("Navegue pelos frames para escolher o momento exato em que a análise deve começar.")
@@ -249,7 +265,6 @@ if st.session_state.step == "frame_selection":
     
     cap.release(), os.remove(tfile.name)
 
-# --- PASSO 2: CONFIGURAÇÃO E ANÁLISE (INTEGRADO) ---
 if st.session_state.step == "configuration":
     st.markdown("## Passo 3: Configuração e Análise")
     st.info("Use a grade para definir os parâmetros e clique em 'Iniciar Análise'. Você pode ajustar os valores e reanalisar a qualquer momento.")
@@ -318,7 +333,6 @@ if st.session_state.step == "configuration":
         
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Use a grade como referência para os parâmetros.')
         
-        # --- 1) BOTÃO PARA BAIXAR IMAGEM DE CONFIGURAÇÃO ---
         _, buffer_preview = cv2.imencode('.PNG', cv2.cvtColor(frame_para_preview, cv2.COLOR_RGB2BGR))
         preview_bytes = BytesIO(buffer_preview).getvalue()
         st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
@@ -352,7 +366,6 @@ if st.session_state.step == "configuration":
                 
                 if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
                     imagem_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
-                    # Passa o df_final que agora é baseado nos carimbos
                     img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_final, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
                     st.session_state.img_vetores = img_vetores_bytes
                 
@@ -360,7 +373,6 @@ if st.session_state.step == "configuration":
                     st.image(st.session_state.img_vetores, caption="Imagem Estroboscópica com Vetores de Velocidade")
                     st.download_button("💾 Baixar Imagem com Vetores (.png)", st.session_state.img_vetores, "imagem_com_vetores.png", "image/png", use_container_width=True)
             
-            # --- 2) BOTÃO DE REINÍCIO AO FINAL ---
             st.markdown("---")
             if st.button("🔄 Analisar outro vídeo", key="final_reset"):
                 for key in list(st.session_state.keys()):
