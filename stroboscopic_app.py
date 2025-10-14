@@ -64,7 +64,7 @@ def desenhar_grade_cartesiana(frame, intervalo=100):
         cv2.putText(frame_com_grade, str(y), (10, pos_y_imagem + 5), fonte, escala_fonte, cor_texto, 1)
     return frame_com_grade
 
-def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, scale_vetor=50, max_len_vetor=100):
+def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element):
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_bytes)
     video_path = tfile.name
@@ -78,13 +78,18 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     tracker.init(initial_frame, bbox_coords_opencv)
 
     imagem_estroboscopica = initial_frame.copy()
-    imagem_estroboscopica_com_vetores = initial_frame.copy() # Nova imagem para os vetores
     altura_frame, largura_frame, _ = initial_frame.shape
     
     raw_data = []
-    # Armazena os centros dos carimbos e o tempo para calcular vetores
-    carimbos_data = [] # [frame_idx, centro_x_px, centro_y_px, tempo_s]
+    carimbos_data = []
     posicao_ultimo_carimbo_px = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
+    
+    # Adiciona o ponto inicial aos carimbos para ter referência
+    carimbos_data.append([
+        start_frame_idx, 
+        posicao_ultimo_carimbo_px[0], 
+        posicao_ultimo_carimbo_px[1]
+    ])
 
     contador_frames_processados = 0
     while True:
@@ -103,21 +108,14 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
             
             dist_pixels = np.sqrt((centro_atual_px[0] - posicao_ultimo_carimbo_px[0])**2 + (centro_atual_px[1] - posicao_ultimo_carimbo_px[1])**2)
             
-            # Condição para "carimbar"
             if dist_pixels * scale_factor >= fator_distancia:
                 (x, y, w, h) = [int(v) for v in bbox_atual]
                 x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
                 regiao = frame_atual[y_s:y_e, x_s:x_e]
                 if regiao.size > 0:
                     imagem_estroboscopica[y_s:y_e, x_s:x_e] = regiao
-                    imagem_estroboscopica_com_vetores[y_s:y_e, x_s:x_e] = regiao # Carimba também na imagem com vetores
                 
-                carimbos_data.append([
-                    frame_atual_idx, 
-                    centro_atual_px[0], 
-                    centro_atual_px[1], 
-                    (frame_atual_idx - start_frame_idx) / fps
-                ])
+                carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
                 posicao_ultimo_carimbo_px = centro_atual_px
 
         contador_frames_processados += 1
@@ -125,7 +123,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     cap.release()
     os.remove(video_path)
     
-    if not raw_data: return None, None, None, None # Adicionado None para a nova imagem
+    if not raw_data: return None, None, None, None
     
     df = pd.DataFrame(raw_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df['tempo_s'] = (df['frame'] - start_frame_idx) / fps
@@ -142,55 +140,49 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     df['aceleracao_um_s2'] = df['vel_suavizada'].diff() / df['tempo_s'].diff()
     
     df_final = df[['frame', 'tempo_s', 'pos_x_um', 'pos_y_um', 'velocidade_um_s', 'aceleracao_um_s2']].copy().fillna(0)
-
-    # --- Cálculo e Desenho dos Vetores de Velocidade ---
-    if len(carimbos_data) > 1:
-        df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px', 'tempo_s'])
-        
-        # Converter coordenadas para o sistema de coordenadas do usuário antes de calcular a velocidade
-        df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
-        df_carimbos['pos_y_um'] = -(df_carimbos['pos_y_px'] - origin_coords[1]) * scale_factor
-
-        df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / df_carimbos['tempo_s'].diff()
-        df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / df_carimbos['tempo_s'].diff()
-        df_carimbos['velocidade_um_s'] = np.sqrt(df_carimbos['vx_um_s']**2 + df_carimbos['vy_um_s']**2)
-
-        # Plotar os vetores
-        for i in range(1, len(df_carimbos)): # Começa do segundo ponto para ter um diff
-            p_start_px = (int(df_carimbos.loc[i, 'pos_x_px']), int(df_carimbos.loc[i, 'pos_y_px']))
-            
-            vx = df_carimbos.loc[i, 'vx_um_s']
-            vy = df_carimbos.loc[i, 'vy_um_s']
-            vel_magnitude = df_carimbos.loc[i, 'velocidade_um_s']
-
-            if not np.isnan(vx) and not np.isnan(vy) and vel_magnitude > 0:
-                # Comprimento da seta proporcional à velocidade, limitado por max_len_vetor
-                arrow_length_pixels = min(max_len_vetor, vel_magnitude * scale_vetor / scale_factor) # scale_vetor está em u.m. por pixel
-                
-                # Para evitar dividir por zero se a velocidade for muito pequena
-                direction_x = vx / vel_magnitude if vel_magnitude > 0 else 0
-                direction_y = vy / vel_magnitude if vel_magnitude > 0 else 0
-
-                # Note que a direção Y no sistema de coordenadas do usuário (para cima é positivo)
-                # é o oposto da direção Y no OpenCV (para baixo é positivo).
-                # Então, para desenhar o vetor corretamente no OpenCV, inverte-se a componente Y.
-                p_end_px = (int(p_start_px[0] + direction_x * arrow_length_pixels), 
-                            int(p_start_px[1] - direction_y * arrow_length_pixels)) # Note o sinal de menos aqui
-                
-                cv2.arrowedLine(imagem_estroboscopica_com_vetores, p_start_px, p_end_px, (0, 0, 255), 2, tipLength=0.3) # Azul
-
+    
     status_text_element.success(f"Processamento concluído!")
     
     csv_bytes = df_final.to_csv(index=False).encode('utf-8')
     _, buffer_img_estrob = cv2.imencode('.PNG', imagem_estroboscopica)
     img_estrob_bytes = BytesIO(buffer_img_estrob).getvalue()
-
-    _, buffer_img_vetores = cv2.imencode('.PNG', imagem_estroboscopica_com_vetores)
-    img_vetores_bytes = BytesIO(buffer_img_vetores).getvalue()
-
+    
     figura_graficos = plotar_graficos(df_final)
+    
+    # Retorna também o dataframe e a lista de carimbos para a função de vetores
+    return img_estrob_bytes, csv_bytes, figura_graficos, df_final, carimbos_data
 
-    return img_estrob_bytes, img_vetores_bytes, csv_bytes, figura_graficos
+def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_completo, carimbos_data, origin_coords, scale_factor, scale_vetor, max_len_vetor):
+    imagem_com_vetores = imagem_estroboscopica_original.copy()
+    
+    df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
+    
+    # Usa o df completo para obter o tempo e as posições em u.m.
+    df_merged = pd.merge(df_carimbos, df_completo, on='frame', how='left')
+
+    df_merged['vx_um_s'] = df_merged['pos_x_um'].diff() / df_merged['tempo_s'].diff()
+    df_merged['vy_um_s'] = df_merged['pos_y_um'].diff() / df_merged['tempo_s'].diff()
+
+    for i in range(1, len(df_merged)):
+        p_start_px = (int(df_merged.loc[i, 'pos_x_px']), int(df_merged.loc[i, 'pos_y_px']))
+        
+        vx = df_merged.loc[i, 'vx_um_s']
+        vy = df_merged.loc[i, 'vy_um_s']
+        vel_magnitude = np.sqrt(vx**2 + vy**2)
+
+        if not np.isnan(vx) and not np.isnan(vy) and vel_magnitude > 0:
+            arrow_length_pixels = min(max_len_vetor, vel_magnitude * scale_vetor) # scale_vetor agora é um multiplicador simples
+
+            direction_x = vx / vel_magnitude
+            direction_y = vy / vel_magnitude
+            
+            p_end_px = (int(p_start_px[0] + direction_x * arrow_length_pixels), 
+                        int(p_start_px[1] - direction_y * arrow_length_pixels))
+            
+            cv2.arrowedLine(imagem_com_vetores, p_start_px, p_end_px, (0, 0, 255), 2, tipLength=0.3)
+    
+    _, buffer = cv2.imencode('.PNG', imagem_com_vetores)
+    return BytesIO(buffer).getvalue()
 
 # --- INTERFACE DA APLICAÇÃO ---
 
@@ -204,6 +196,7 @@ if 'step' not in st.session_state:
 if 'results' not in st.session_state:
     st.session_state.results = None
 
+# ... (O resto da interface continua o mesmo até a seção de resultados)
 # --- PASSO 0: UPLOAD ---
 if st.session_state.step == "upload":
     st.markdown("## Passo 1: Upload do Vídeo")
@@ -287,16 +280,9 @@ if st.session_state.step == "configuration":
         st.markdown("#### 4. Parâmetros de Geração")
         fator_dist = st.slider("Espaçamento na Imagem (u.m.)", 0.01, 2.0, 0.1, 0.01, help="Distância MÍNIMA (em u.m.) que o objeto precisa se mover para ser 'carimbado' na imagem final.")
         
-        st.markdown("#### 5. Parâmetros dos Vetores de Velocidade")
-        # Novo slider para controlar o tamanho dos vetores
-        scale_vetor = st.slider("Escala do Vetor de Velocidade (u.m. por pixel)", 1, 200, 50, help="Controla o comprimento dos vetores na imagem. Valores maiores = vetores maiores.")
-        max_len_vetor = st.slider("Comprimento Máximo do Vetor (pixels)", 10, 200, 100, help="Define o comprimento máximo em pixels que uma seta de vetor pode ter na imagem para evitar que fiquem muito grandes.")
-
-        # Botão de processamento
         if st.button("🚀 Iniciar / Atualizar Análise", type="primary", use_container_width=True):
             status_text = st.empty()
             with st.spinner("Analisando o vídeo..."):
-                # Conversões e Cálculos
                 orig_y_opencv = altura_total - orig_y_usuario
                 origin_coords = (orig_x, orig_y_opencv)
                 
@@ -306,78 +292,80 @@ if st.session_state.step == "configuration":
                 
                 if length_pixels > 0:
                     scale_factor = distancia_real / length_pixels
-                    
                     obj_y_opencv = altura_total - obj_y_usuario - obj_h
                     bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
                     
-                    # Chama a função de processamento e armazena os resultados no estado da sessão
                     st.session_state.results = processar_video(
-                        st.session_state.video_bytes,
-                        st.session_state.initial_frame,
-                        st.session_state.current_frame_idx,
-                        bbox_opencv,
-                        fator_dist,
-                        scale_factor,
-                        origin_coords,
-                        status_text,
-                        scale_vetor,
-                        max_len_vetor
+                        st.session_state.video_bytes, st.session_state.initial_frame,
+                        st.session_state.current_frame_idx, bbox_opencv, fator_dist,
+                        scale_factor, origin_coords, status_text
                     )
                 else:
-                    st.error("A distância da escala em pixels não pode ser zero. Verifique os pontos de calibração.")
+                    st.error("A distância da escala em pixels não pode ser zero.")
 
     with col_preview:
         frame_para_preview = frame_com_grade.copy()
-        
-        # Desenha a Origem
         orig_y_opencv_preview = altura_total - orig_y_usuario
-        cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1) # Magenta
+        cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
         cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv_preview), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
 
-        # Desenha a Escala
         y1_opencv_preview = altura_total - y1_usuario
         y2_opencv_preview = altura_total - y2_usuario
-        cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1) # Ciano
-        cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1) # Ciano
+        cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
+        cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
         cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
         
-        # Desenha o Bounding Box
         obj_y_opencv_preview = altura_total - obj_y_usuario - obj_h
         if obj_w > 0 and obj_h > 0:
             cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
         
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Use a grade como referência para os parâmetros.')
 
-    # --- Seção de Resultados (só aparece se houver resultados) ---
     if st.session_state.results:
         st.markdown("---")
-        st.markdown("## ✅ Resultados da Análise")
+        st.markdown("## ✅ Resultados da Análise Principal")
         
-        img_estrob_bytes, img_vetores_bytes, resultado_csv, figura_graficos = st.session_state.results
+        img_estrob_bytes, resultado_csv, figura_graficos, df_final, carimbos_data = st.session_state.results
 
-        if img_estrob_bytes is not None and img_vetores_bytes is not None and resultado_csv is not None and figura_graficos is not None:
-            with st.expander("Ver Imagens Estroboscópicas", expanded=True):
-                st.markdown("### Imagem Estroboscópica Original")
+        if img_estrob_bytes is not None:
+            with st.expander("Ver Resultados Detalhados", expanded=True):
+                st.markdown("### Imagem Estroboscópica")
                 st.image(img_estrob_bytes)
-                st.download_button("💾 Baixar Imagem Original (.png)", img_estrob_bytes, "imagem_estroboscopica.png", "image/png", use_container_width=True)
+                st.download_button("💾 Baixar Imagem (.png)", img_estrob_bytes, "imagem_estroboscopica.png", "image/png", use_container_width=True)
                 
-                st.markdown("### Imagem Estroboscópica com Vetores de Velocidade")
-                st.image(img_vetores_bytes)
-                st.download_button("💾 Baixar Imagem com Vetores (.png)", img_vetores_bytes, "imagem_estroboscopica_vetores.png", "image/png", use_container_width=True)
-
-            with st.expander("Ver Gráficos de Cinemática", expanded=True):
                 st.markdown("### Gráficos de Cinemática")
                 st.pyplot(figura_graficos)
-            
-            with st.expander("Ver Tabela de Dados Completa", expanded=False):
+                
                 st.markdown("### Tabela de Dados Completa")
-                df_resultado = pd.read_csv(BytesIO(resultado_csv))
-                st.dataframe(df_resultado)
+                st.dataframe(df_final)
                 st.download_button("💾 Baixar Dados (CSV)", resultado_csv, "dados_trajetoria.csv", "text/csv", use_container_width=True)
-        else:
-            st.error("Falha na análise. O rastreador pode ter perdido o objeto. Verifique a seleção do objeto e tente novamente.")
 
-    # Botão para recomeçar
+            # --- NOVA SEÇÃO DE ANÁLISE ADICIONAL ---
+            st.markdown("---")
+            with st.expander("Análise Adicional: Vetores de Velocidade"):
+                st.info("Ajuste os parâmetros e clique no botão para gerar uma imagem com os vetores de velocidade.")
+                
+                vec_col1, vec_col2 = st.columns(2)
+                scale_vetor = vec_col1.slider("Escala do Vetor", 1, 200, 50, help="Multiplicador para o comprimento dos vetores. Valores maiores = vetores mais longos.")
+                max_len_vetor = vec_col2.slider("Comprimento Máximo (pixels)", 10, 200, 100, help="Limite máximo para o tamanho de um vetor na imagem.")
+                
+                if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
+                    # Chama a nova função de desenho, que é muito mais rápida
+                    imagem_estroboscopica_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
+                    
+                    img_vetores_bytes = desenhar_vetores_velocidade(
+                        imagem_estroboscopica_original, df_final, carimbos_data,
+                        st.session_state.origin_coords, st.session_state.scale_factor,
+                        scale_vetor, max_len_vetor
+                    )
+                    st.session_state.img_vetores = img_vetores_bytes
+                
+                if 'img_vetores' in st.session_state and st.session_state.img_vetores is not None:
+                    st.image(st.session_state.img_vetores, caption="Imagem Estroboscópica com Vetores de Velocidade")
+                    st.download_button("💾 Baixar Imagem com Vetores (.png)", st.session_state.img_vetores, "imagem_com_vetores.png", "image/png", use_container_width=True)
+        else:
+            st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
+
     if st.button("Analisar outro vídeo"):
         for key in st.session_state.keys():
             del st.session_state[key]
