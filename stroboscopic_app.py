@@ -10,7 +10,7 @@ from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-# --- 2) ESTILO DOS BOTÕES (CSS) ---
+# --- 6) ESTILO DOS BOTÕES (CSS) ---
 st.markdown("""
 <style>
 /* Botões de Ação (Azul) */
@@ -28,7 +28,7 @@ st.markdown("""
     color: white;
     border-color: #003B65;
 }
-/* Botões de Download (Verde) - targeting a specific class Streamlit uses */
+/* Botões de Download (Verde) */
 .stDownloadButton > button {
     background-color: #1E8A42;
     color: white;
@@ -50,9 +50,9 @@ st.markdown("""
 
 def plotar_graficos(df):
     plt.style.use('seaborn-v0_8-whitegrid')
-    # --- 5) NOVO LAYOUT DE GRÁFICOS (3 LINHAS) ---
-    fig = plt.figure(figsize=(15, 18))
-    gs = gridspec.GridSpec(3, 2, figure=fig)
+    # --- 5) NOVO LAYOUT DE GRÁFICOS (2 LINHAS) ---
+    fig = plt.figure(figsize=(15, 12))
+    gs = gridspec.GridSpec(2, 2, figure=fig)
     fig.tight_layout(pad=6.0)
 
     # Gráfico 1: Trajetória (ocupa a primeira linha inteira)
@@ -74,42 +74,25 @@ def plotar_graficos(df):
     ax1.legend()
     ax1.set_aspect('equal', adjustable='box')
 
-    # Gráfico 2: Velocidade em X
+    # Gráfico 2: Velocidade em X (Suavizada)
     ax2 = fig.add_subplot(gs[1, 0])
-    ax2.plot(df['tempo_s'], df['vx_um_s'], label='Velocidade em X', color='green')
+    ax2.plot(df['tempo_s'], df['vx_um_s'], label='Velocidade em X (suavizada)', color='green')
     ax2.set_title('Velocidade na Direção X vs. Tempo', fontsize=16)
     ax2.set_xlabel('Tempo (s)')
     ax2.set_ylabel('Velocidade (u.m./s)')
     ax2.legend()
 
-    # Gráfico 3: Velocidade em Y
+    # Gráfico 3: Velocidade em Y (Suavizada)
     ax3 = fig.add_subplot(gs[1, 1])
-    ax3.plot(df['tempo_s'], df['vy_um_s'], label='Velocidade em Y', color='orange')
+    ax3.plot(df['tempo_s'], df['vy_um_s'], label='Velocidade em Y (suavizada)', color='orange')
     ax3.set_title('Velocidade na Direção Y vs. Tempo', fontsize=16)
     ax3.set_xlabel('Tempo (s)')
     ax3.set_ylabel('Velocidade (u.m./s)')
     ax3.legend()
 
-    # Gráfico 4: Aceleração em X
-    ax4 = fig.add_subplot(gs[2, 0])
-    ax4.plot(df['tempo_s'], df['ax_um_s2'], label='Aceleração em X', color='purple')
-    ax4.set_title('Aceleração na Direção X vs. Tempo', fontsize=16)
-    ax4.set_xlabel('Tempo (s)')
-    ax4.set_ylabel('Aceleração (u.m./s²)')
-    ax4.legend()
-
-    # Gráfico 5: Aceleração em Y
-    ax5 = fig.add_subplot(gs[2, 1])
-    ax5.plot(df['tempo_s'], df['ay_um_s2'], label='Aceleração em Y', color='brown')
-    ax5.set_title('Aceleração na Direção Y vs. Tempo', fontsize=16)
-    ax5.set_xlabel('Tempo (s)')
-    ax5.set_ylabel('Aceleração (u.m./s²)')
-    ax5.legend()
-
     return fig
 
 def desenhar_grade_cartesiana(frame, intervalo=100):
-    # ... (sem alterações)
     frame_com_grade = frame.copy()
     altura, largura, _ = frame_com_grade.shape
     cor_linha, cor_texto = (0, 255, 0, 200), (0, 255, 0)
@@ -124,7 +107,6 @@ def desenhar_grade_cartesiana(frame, intervalo=100):
     return frame_com_grade
 
 def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element):
-    # ... (rastreamento do vídeo, sem alterações na lógica principal)
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_bytes)
     video_path = tfile.name
@@ -181,22 +163,20 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     df['pos_y_um'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
     
     delta_t = df['tempo_s'].diff()
-    df['vx_um_s'] = df['pos_x_um'].diff() / delta_t
-    df['vy_um_s'] = df['pos_y_um'].diff() / delta_t
+    vx_raw = df['pos_x_um'].diff() / delta_t
+    vy_raw = df['pos_y_um'].diff() / delta_t
     
+    # --- 2) SUAVIZAÇÃO DA VELOCIDADE ---
     window_len = min(51, len(df) - 2 if len(df) % 2 == 0 else len(df) - 1)
     if window_len > 3:
-        df['vx_suavizada'] = savgol_filter(df['vx_um_s'].fillna(0), window_len, 3)
-        df['vy_suavizada'] = savgol_filter(df['vy_um_s'].fillna(0), window_len, 3)
+        df['vx_um_s'] = savgol_filter(vx_raw.fillna(0), window_len, 3)
+        df['vy_um_s'] = savgol_filter(vy_raw.fillna(0), window_len, 3)
     else:
-        df['vx_suavizada'] = df['vx_um_s']
-        df['vy_suavizada'] = df['vy_um_s']
+        df['vx_um_s'] = vx_raw
+        df['vy_um_s'] = vy_raw
 
-    df['ax_um_s2'] = df['vx_suavizada'].diff() / delta_t
-    df['ay_um_s2'] = df['vy_suavizada'].diff() / delta_t
-    
-    # --- 3) ATUALIZAÇÃO DAS COLUNAS FINAIS ---
-    df_final = df[['frame', 'tempo_s', 'pos_x_um', 'pos_y_um', 'vx_um_s', 'vy_um_s', 'ax_um_s2', 'ay_um_s2']].copy().fillna(0)
+    # --- 1) REMOÇÃO DA ACELERAÇÃO ---
+    df_final = df[['frame', 'tempo_s', 'pos_x_um', 'pos_y_um', 'vx_um_s', 'vy_um_s']].copy().fillna(0)
     
     status_text_element.success(f"Processamento concluído!")
     
@@ -208,7 +188,6 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     return img_estrob_bytes, df_final, figura_graficos, carimbos_data
 
 def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_completo, carimbos_data, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
-    # ... (sem alterações)
     imagem_com_vetores = imagem_estroboscopica_original.copy()
     df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df_merged = pd.merge(df_carimbos, df_completo, on='frame', how='left')
@@ -236,14 +215,17 @@ st.markdown("### Uma ferramenta para extrair dados cinemáticos de vídeos com c
 if 'step' not in st.session_state: st.session_state.step = "upload"
 if 'results' not in st.session_state: st.session_state.results = None
 
+# --- PASSO 0: UPLOAD ---
 if st.session_state.step == "upload":
-    # --- 4) REMOÇÃO DO "NONE" ---
     col1, col2 = st.columns([3, 1])
     with col1:
         st.markdown("## Passo 1: Upload do Vídeo")
     with col2:
+        # --- 3 & 4) BOTÃO MOVIDO PARA O TOPO ---
         if st.button("🔄 Analisar novo vídeo"):
-            for key in st.session_state.keys(): del st.session_state[key]
+            for key in st.session_state.keys():
+                if key != 'step': # Mantém o estado do passo para não quebrar a lógica
+                    st.session_state[key] = None
             st.rerun()
 
     video_file = st.file_uploader("Escolha um arquivo de vídeo (MP4, AVI, MOV)", type=["mp4", "avi", "mov"], label_visibility="collapsed")
@@ -253,8 +235,8 @@ if st.session_state.step == "upload":
         st.session_state.results = None 
         st.rerun()
 
+# --- PASSO 1: SELEÇÃO DO FRAME INICIAL ---
 if st.session_state.step == "frame_selection":
-    # ... (sem alterações)
     st.markdown("## Passo 2: Seleção do Frame Inicial")
     st.info("Navegue pelos frames para escolher o momento exato em que a análise deve começar.")
 
@@ -280,6 +262,7 @@ if st.session_state.step == "frame_selection":
     
     cap.release(), os.remove(tfile.name)
 
+# --- PASSO 2: CONFIGURAÇÃO E ANÁLISE (INTEGRADO) ---
 if st.session_state.step == "configuration":
     st.markdown("## Passo 3: Configuração e Análise")
     st.info("Use a grade para definir os parâmetros e clique em 'Iniciar Análise'. Você pode ajustar os valores e reanalisar a qualquer momento.")
@@ -298,7 +281,7 @@ if st.session_state.step == "configuration":
         y1_usuario = p2.number_input("Ponto 1 - Y (de baixo)", 0, step=10, key="y1")
         x2 = p1.number_input("Ponto 2 - X", 0, step=10, key="x2")
         y2_usuario = p2.number_input("Ponto 2 - Y (de baixo)", 0, step=10, key="y2")
-        # --- 1) VALOR PADRÃO REMOVIDO PARA FORÇAR ENTRADA DO USUÁRIO ---
+        # --- 1) VALOR PADRÃO REMOVIDO PARA PERMITIR QUALQUER VALOR ---
         distancia_real = st.number_input("Distância real entre os pontos (em u.m.)", min_value=0.01, format="%.4f", key="dist_real")
         st.markdown("---")
         st.markdown("#### 3. Seleção do Objeto")
@@ -313,7 +296,6 @@ if st.session_state.step == "configuration":
         if st.button("🚀 Iniciar / Atualizar Análise", type="primary", use_container_width=True):
             status_text = st.empty()
             with st.spinner("Analisando o vídeo..."):
-                # ... (código de cálculo e chamada a processar_video)
                 orig_y_opencv, y1_opencv, y2_opencv = altura_total - orig_y_usuario, altura_total - y1_usuario, altura_total - y2_usuario
                 origin_coords = (orig_x, orig_y_opencv)
                 length_pixels = np.sqrt((x2 - x1)**2 + (y2_opencv - y1_opencv)**2)
@@ -323,7 +305,6 @@ if st.session_state.step == "configuration":
                     bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
                     st.session_state.origin_coords, st.session_state.scale_factor = origin_coords, scale_factor
                     
-                    # --- 3) GERAÇÃO DO CABEÇALHO DO CSV ---
                     header_comentarios = (
                         f"# Análise de Movimento - {pd.Timestamp.now()}\n"
                         f"# Parâmetros de Entrada:\n"
@@ -339,7 +320,6 @@ if st.session_state.step == "configuration":
                 else: st.error("A distância da escala em pixels não pode ser zero.")
 
     with col_preview:
-        # ... (código de desenho da pré-visualização)
         frame_para_preview = frame_com_grade.copy()
         orig_y_opencv_preview, y1_opencv_preview, y2_opencv_preview = altura_total - orig_y_usuario, altura_total - y1_usuario, altura_total - y2_usuario
         cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
@@ -363,14 +343,13 @@ if st.session_state.step == "configuration":
                 st.markdown("### Gráficos de Cinemática"); st.pyplot(figura_graficos)
                 st.markdown("### Tabela de Dados"); st.dataframe(df_final)
                 
-                # --- 3) CRIAÇÃO DO CSV FINAL COM CABEÇALHO ---
                 csv_final_string = st.session_state.csv_header + df_final.to_csv(index=False)
                 st.download_button("💾 Baixar Dados (CSV)", csv_final_string, "dados_analise.csv", "text/csv", use_container_width=True)
 
             st.markdown("---")
             with st.expander("Análise Adicional: Vetores de Velocidade"):
                 st.info("Ajuste os parâmetros e clique para gerar uma imagem com os vetores de velocidade.")
-                cores_bgr = {"Vermelho": (0, 0, 255), "Azul": (255, 0, 0), "Amarelo": (0, 255, 255), "Ciano": (255, 255, 0), "Magenta": (255, 0, 255), "Verde": (0, 255, 0), "Branco": (255, 255, 255), "Laranja": (0, 165, 255), "Roxo": (128, 0, 128)}
+                cores_bgr = {"Vermelho": (0, 0, 255), "Azul": (255, 0, 0), "Amarelo": (0, 255, 255), "Ciano": (255, 255, 0), "Magenta": (255, 0, 255), "Verde": (0, 255, 0), "Branco": (255, 255, 255), "Laranja": (0, 165, 255)}
                 
                 vec_col1, vec_col2 = st.columns(2)
                 cor_nome = vec_col1.selectbox("Cor do Vetor", options=list(cores_bgr.keys()))
@@ -390,7 +369,7 @@ if st.session_state.step == "configuration":
         else:
             st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
 
-# --- 5) RODAPÉ INFORMATIVO ---
+# --- Rodapé Informativo ---
 st.markdown("---")
 footer_expander = st.expander("💡 Informações Adicionais (Funcionalidades e Dicas)", expanded=False)
 with footer_expander:
@@ -399,8 +378,8 @@ with footer_expander:
     - **Seleção de Frame Inicial:** Navegue pelo vídeo para definir o ponto exato de início da análise.
     - **Calibração de Espaço:** Defina uma origem (0,0) e uma escala de referência (u.m./pixel) para obter dados em unidades de medida reais.
     - **Rastreamento de Objeto:** Acompanha o objeto selecionado ao longo do vídeo.
-    - **Análise Cinemática:** Calcula e exibe dados de posição, velocidade (componentes X/Y e magnitude) e aceleração.
-    - **Visualização de Dados:** Gera uma imagem estroboscópica, gráficos de trajetória/velocidade/aceleração e uma imagem opcional com vetores de velocidade.
+    - **Análise Cinemática:** Calcula e exibe dados de posição e velocidade (componentes X/Y).
+    - **Visualização de Dados:** Gera uma imagem estroboscópica, gráficos de trajetória/velocidade e uma imagem opcional com vetores de velocidade.
     - **Exportação de Resultados:** Permite o download da imagem estroboscópica e da tabela de dados completa em formato CSV, incluindo os parâmetros da análise.
     """)
     st.markdown("#### Dicas para Melhores Resultados")
