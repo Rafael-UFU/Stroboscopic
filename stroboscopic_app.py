@@ -11,6 +11,22 @@ import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 
+# --- CSS PARA SOBREPOR O CANVAS ---
+st.markdown("""
+<style>
+.canvas-container {
+    position: relative;
+    width: 100%;
+}
+.canvas-container > div:first-child {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1; /* Garante que o canvas fique por cima */
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- FUNÇÕES DE LÓGICA E PROCESSAMENTO ---
 # (As funções de plotar gráficos e processar vídeo foram movidas para o final para melhor organização)
 
@@ -85,24 +101,26 @@ if st.session_state.step == "calibration":
     st.info("Desenhe uma linha sobre um objeto de comprimento conhecido na cena e informe o seu tamanho real.")
 
     bg_image_calib_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    bg_image_calib = Image.fromarray(bg_image_calib_np)
-    altura, largura = bg_image_calib.height, bg_image_calib.width
+    altura, largura, _ = bg_image_calib_np.shape
 
     col_canvas_calib, col_input_calib = st.columns(2)
 
     with col_canvas_calib:
         st.write("1. Desenhe a linha de referência na imagem:")
+        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
         canvas_result_calib = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=3,
             stroke_color="#FF0000",
-            background_image=bg_image_calib, # <-- VOLTAMOS A USAR O MÉTODO DIRETO
+            background_color="rgba(0, 0, 0, 0)", # Fundo transparente
             update_streamlit=True,
             height=altura,
             width=largura,
             drawing_mode="line",
             key="canvas_calib",
         )
+        st.image(bg_image_calib_np, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_input_calib:
         if canvas_result_calib.json_data is not None and canvas_result_calib.json_data["objects"]:
@@ -127,18 +145,18 @@ if st.session_state.step == "origin_setting":
     st.info("Clique no ponto da imagem que será a origem do seu sistema de coordenadas.")
 
     bg_image_origin_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    bg_image_origin = Image.fromarray(bg_image_origin_np)
-    altura, largura = bg_image_origin.height, bg_image_origin.width
+    altura, largura, _ = bg_image_origin_np.shape
 
     col_canvas_origin, col_input_origin = st.columns(2)
 
     with col_canvas_origin:
         st.write("Clique no ponto de origem:")
+        st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
         canvas_result_origin = st_canvas(
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=2,
             stroke_color="#00FF00",
-            background_image=bg_image_origin, # <-- VOLTAMOS A USAR O MÉTODO DIRETO
+            background_color="rgba(0, 0, 0, 0)",
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -146,6 +164,8 @@ if st.session_state.step == "origin_setting":
             point_display_radius=5,
             key="canvas_origin",
         )
+        st.image(bg_image_origin_np, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     
     with col_input_origin:
         if canvas_result_origin.json_data is not None and canvas_result_origin.json_data["objects"]:
@@ -165,9 +185,8 @@ if st.session_state.step == "roi_selection":
     st.info("Use a grade de referência e a origem marcada para definir a área inicial do objeto.")
 
     frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame, intervalo=100)
-    # Desenha o marcador da origem
     orig_x, orig_y = int(st.session_state.origin_coords[0]), int(st.session_state.origin_coords[1])
-    cv2.circle(frame_com_grade, (orig_x, orig_y), 10, (255, 0, 255), -1) # Círculo magenta
+    cv2.circle(frame_com_grade, (orig_x, orig_y), 10, (255, 0, 255), -1)
     cv2.putText(frame_com_grade, "(0,0)", (orig_x + 15, orig_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
     
     altura_total, _, _ = frame_com_grade.shape
@@ -195,9 +214,9 @@ if st.session_state.step == "roi_selection":
     with col_preview:
         frame_para_preview = frame_com_grade.copy()
         if w > 0 and h > 0:
-            cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2) # Retângulo azul
+            cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2)
         
-        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.', use_container_width=True)
+        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.')
 
 # --- PASSO 5: PROCESSAMENTO E RESULTADOS ---
 if st.session_state.step == "processing":
@@ -229,7 +248,6 @@ if st.session_state.step == "processing":
         st.download_button("💾 Baixar Dados (CSV)", resultado_csv, "dados_trajetoria.csv", "text/csv", use_container_width=True)
         
         if st.button("Analisar outro vídeo"):
-            # Limpa o estado da sessão para recomeçar
             for key in st.session_state.keys():
                 del st.session_state[key]
             st.rerun()
@@ -299,7 +317,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx) # Pula para o frame inicial
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx)
 
     tracker = cv2.TrackerCSRT_create()
     tracker.init(initial_frame, bbox_coords_opencv)
@@ -325,7 +343,6 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
             centro_atual = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
             raw_data.append([frame_atual_idx, centro_atual[0], centro_atual[1]])
             
-            # O fator de distância para a imagem estroboscópica agora é em metros
             dist_pixels = np.sqrt((centro_atual[0] - posicao_ultimo_carimbo[0])**2 + (centro_atual[1] - posicao_ultimo_carimbo[1])**2)
             if dist_pixels * scale_factor >= fator_distancia:
                 (x, y, w, h) = [int(v) for v in bbox_atual]
@@ -344,11 +361,9 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     df = pd.DataFrame(raw_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df['tempo_s'] = (df['frame'] - start_frame_idx) / fps
     
-    # Converte para o sistema de coordenadas calibrado
     df['pos_x_m'] = (df['pos_x_px'] - origin_coords[0]) * scale_factor
-    df['pos_y_m'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor # Inverte Y
+    df['pos_y_m'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
     
-    # Cinemática
     df['velocidade_m_s'] = np.sqrt(df['pos_x_m'].diff()**2 + df['pos_y_m'].diff()**2) / df['tempo_s'].diff()
     window_len = min(51, len(df) - 2 if len(df) % 2 == 0 else len(df) - 1)
     if window_len > 3:
