@@ -151,9 +151,11 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
         contador_frames_processados += 1
     
     cap.release(), os.remove(video_path)
-    if len(carimbos_data) < 2: return None
     
-    # --- CÁLCULO DE VELOCIDADE UNIFICADO (BASEADO APENAS NOS CARIMBOS) ---
+    # --- CORREÇÃO AQUI ---
+    if len(carimbos_data) < 2: 
+        return None, None, None, None
+    
     df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df_carimbos['tempo_s'] = (df_carimbos['frame'] - start_frame_idx) / fps
     df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
@@ -163,7 +165,6 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
     df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / delta_t
     
-    # Preenche o primeiro valor de velocidade com 0, pois não há ponto anterior para calcular
     df_final = df_carimbos.fillna(0)
     
     status_text_element.success(f"Processamento concluído! {len(df_final)} pontos de dados analisados.")
@@ -173,13 +174,12 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     
     figura_graficos = plotar_graficos(df_final)
     
-    # A função de vetores agora pode usar o df_final diretamente
-    return img_estrob_bytes, df_final, figura_graficos
+    return img_estrob_bytes, df_final, figura_graficos, carimbos_data
 
 def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_analisado, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
     imagem_com_vetores = imagem_estroboscopica_original.copy()
 
-    for i in range(1, len(df_analisado)): # Começa de 1 pois a velocidade do ponto 0 é 0
+    for i in range(1, len(df_analisado)):
         p_start_px = (int(df_analisado.loc[i, 'pos_x_px']), int(df_analisado.loc[i, 'pos_y_px']))
         vx, vy = df_analisado.loc[i, 'vx_um_s'], df_analisado.loc[i, 'vy_um_s']
         vel_magnitude = np.sqrt(vx**2 + vy**2)
@@ -320,7 +320,7 @@ if st.session_state.step == "configuration":
     if st.session_state.results:
         st.markdown("---")
         st.markdown("## ✅ Resultados da Análise Principal")
-        img_estrob_bytes, df_final, figura_graficos, _ = st.session_state.results
+        img_estrob_bytes, df_final, figura_graficos, carimbos_data = st.session_state.results
 
         if img_estrob_bytes:
             with st.expander("Resultados Detalhados", expanded=True):
