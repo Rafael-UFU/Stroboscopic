@@ -234,11 +234,13 @@ if st.session_state.step == "frame_selection":
     nav_cols = st.columns([1, 1, 1])
 
     with nav_cols[0]:
-        if st.button("<< Frame Anterior", use_container_width=True):
+        # --- BOTÃO COM TAMANHO PADRÃO ---
+        if st.button("<< Frame Anterior"):
             st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
             
     with nav_cols[2]:
-        if st.button("Próximo Frame >>", use_container_width=True):
+        # --- BOTÃO COM TAMANHO PADRÃO ---
+        if st.button("Próximo Frame >>"):
             st.session_state.current_frame_idx = min(total_frames - 1, st.session_state.current_frame_idx + 1)
     
     # Colunas aninhadas para centralizar e diminuir o input
@@ -251,7 +253,8 @@ if st.session_state.step == "frame_selection":
                 max_value=total_frames - 1,
                 step=1,
                 key="current_frame_idx",
-                label_visibility="collapsed"
+                # --- LEGENDA RESTAURADA ---
+                label_visibility="visible" 
             )
 
     # Exibe a imagem centralizada abaixo do painel de controle
