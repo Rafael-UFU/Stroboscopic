@@ -260,6 +260,8 @@ if st.session_state.step == "frame_selection":
         
     if st.button("Confirmar Frame e Iniciar Configuração", type="primary"):
         st.session_state.initial_frame = frame
+        # --- CORREÇÃO AQUI: Salva o frame de início permanentemente ---
+        st.session_state.start_frame_for_analysis = st.session_state.current_frame_idx
         st.session_state.step = "configuration"
         st.rerun()
     
@@ -288,7 +290,6 @@ if st.session_state.step == "configuration":
         st.markdown("#### 3. Seleção do Objeto")
         obj_x = st.number_input("Objeto - X (canto esquerdo)", 0, step=10, key="obj_x")
         obj_y_usuario = st.number_input("Objeto - Y (canto inferior)", 0, step=10, key="obj_y")
-        # --- CORREÇÃO AQUI: REMOÇÃO DO LIMITE MÁXIMO ---
         obj_w = st.number_input("Largura do Objeto", min_value=10, value=50, step=10, key="obj_w")
         obj_h = st.number_input("Altura do Objeto", min_value=10, value=50, step=10, key="obj_h")
         st.markdown("---")
@@ -310,14 +311,21 @@ if st.session_state.step == "configuration":
                     header_comentarios = (
                         f"# Análise de Movimento - {pd.Timestamp.now()}\n"
                         f"# Parâmetros de Entrada:\n"
-                        f"# Frame Inicial: {st.session_state.current_frame_idx}\n"
+                        # --- CORREÇÃO AQUI: Usa a variável permanente ---
+                        f"# Frame Inicial: {st.session_state.start_frame_for_analysis}\n"
                         f"# Origem (pixels, de cima): {origin_coords}\n"
                         f"# Fator de Escala: {scale_factor:.6f} u.m./pixel\n"
                         f"# Objeto Rastreado (x, y, w, h): {bbox_opencv}\n"
                         f"# --- \n"
                     )
 
-                    st.session_state.results = processar_video(st.session_state.video_bytes, st.session_state.initial_frame, st.session_state.current_frame_idx, bbox_opencv, fator_dist, scale_factor, origin_coords, status_text)
+                    st.session_state.results = processar_video(
+                        st.session_state.video_bytes, 
+                        st.session_state.initial_frame, 
+                        # --- CORREÇÃO AQUI: Usa a variável permanente ---
+                        st.session_state.start_frame_for_analysis, 
+                        bbox_opencv, fator_dist, scale_factor, origin_coords, status_text
+                    )
                     st.session_state.csv_header = header_comentarios
                 else: st.error("A distância da escala em pixels não pode ser zero.")
 
