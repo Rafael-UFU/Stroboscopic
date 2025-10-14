@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 
-# --- CSS PARA GARANTIR A SOBREPOSIÇÃO E AJUSTE DO TAMANHO ---
+# --- CSS PARA SOBREPOR O CANVAS ---
 st.markdown("""
 <style>
 /* Estilo para o container da imagem e canvas */
@@ -120,17 +120,16 @@ if st.session_state.step == "calibration":
 
     with col_canvas_calib:
         st.write("1. Desenhe a linha de referência na imagem:")
-        # Usamos um container com um ID para aplicar o CSS de sobreposição
         with st.container():
             st.markdown('<div class="image-and-canvas-container">', unsafe_allow_html=True)
-            st.image(bg_image_calib, use_column_width='always') # A imagem normal
+            st.image(bg_image_calib, use_container_width=True) # CORREÇÃO AQUI
             canvas_result_calib = st_canvas(
                 fill_color="rgba(255, 165, 0, 0.3)",
                 stroke_width=3,
                 stroke_color="#FF0000",
-                background_color="rgba(0, 0, 0, 0)", # Fundo transparente
+                background_color="rgba(0, 0, 0, 0)",
                 update_streamlit=True,
-                height=altura, # Definir altura e largura explícitas para o canvas
+                height=altura,
                 width=largura,
                 drawing_mode="line",
                 key="canvas_calib",
@@ -169,14 +168,14 @@ if st.session_state.step == "origin_setting":
         st.write("Clique no ponto de origem:")
         with st.container():
             st.markdown('<div class="image-and-canvas-container">', unsafe_allow_html=True)
-            st.image(bg_image_origin, use_column_width='always') # A imagem normal
+            st.image(bg_image_origin, use_container_width=True) # CORREÇÃO AQUI
             canvas_result_origin = st_canvas(
                 fill_color="rgba(255, 165, 0, 0.3)",
                 stroke_width=2,
                 stroke_color="#00FF00",
-                background_color="rgba(0, 0, 0, 0)", # Fundo transparente
+                background_color="rgba(0, 0, 0, 0)",
                 update_streamlit=True,
-                height=altura, # Definir altura e largura explícitas para o canvas
+                height=altura,
                 width=largura,
                 drawing_mode="point",
                 point_display_radius=5,
@@ -196,7 +195,6 @@ if st.session_state.step == "origin_setting":
                 st.session_state.step = "roi_selection"
                 st.rerun()
 
-# (O restante do código, do PASSO 4 em diante, permanece exatamente o mesmo)
 # --- PASSO 4: SELEÇÃO DO OBJETO (ROI) ---
 if st.session_state.step == "roi_selection":
     st.markdown("## Passo 5: Seleção do Objeto a ser Rastreado")
@@ -235,7 +233,7 @@ if st.session_state.step == "roi_selection":
         if w > 0 and h > 0:
             cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2) # Retângulo azul
         
-        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.', use_column_width=True)
+        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.', use_container_width=True) # CORREÇÃO AQUI
 
 # --- PASSO 5: PROCESSAMENTO E RESULTADOS ---
 if st.session_state.step == "processing":
@@ -296,6 +294,7 @@ def plotar_graficos(df):
     ax1.set_title('Gráfico de Trajetória', fontsize=16)
     ax1.set_xlabel('Posição X (m)')
     ax1.set_ylabel('Posição Y (m)')
+    ax1.legend()
     ax1.set_aspect('equal', adjustable='box')
 
     # Gráfico 2: Velocidade
