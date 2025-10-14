@@ -4,3 +4,4 @@ streamlit
 pandas
 scipy
 matplotlib
+streamlit-drawable-canvas
