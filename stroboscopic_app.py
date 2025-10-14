@@ -151,10 +151,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
         contador_frames_processados += 1
     
     cap.release(), os.remove(video_path)
-    
-    # --- CORREÇÃO AQUI ---
-    if len(carimbos_data) < 2: 
-        return None, None, None, None
+    if len(carimbos_data) < 2: return None
     
     df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df_carimbos['tempo_s'] = (df_carimbos['frame'] - start_frame_idx) / fps
@@ -174,7 +171,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     
     figura_graficos = plotar_graficos(df_final)
     
-    return img_estrob_bytes, df_final, figura_graficos, carimbos_data
+    return img_estrob_bytes, df_final, figura_graficos
 
 def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_analisado, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
     imagem_com_vetores = imagem_estroboscopica_original.copy()
@@ -219,6 +216,7 @@ if st.session_state.step == "upload":
         st.session_state.results = None 
         st.rerun()
 
+# --- PASSO 1: SELEÇÃO DO FRAME INICIAL (COM INPUT MANUAL) ---
 if st.session_state.step == "frame_selection":
     st.markdown("## Passo 2: Seleção do Frame Inicial")
     st.info("Navegue pelos frames para escolher o momento exato em que a análise deve começar.")
@@ -228,15 +226,32 @@ if st.session_state.step == "frame_selection":
     cap = cv2.VideoCapture(tfile.name)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    if 'current_frame_idx' not in st.session_state: st.session_state.current_frame_idx = 0
+    if 'current_frame_idx' not in st.session_state: 
+        st.session_state.current_frame_idx = 0
 
-    col1, col2, col3 = st.columns([2, 8, 2])
-    if col1.button("<< Frame Anterior"): st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
-    if col3.button("Próximo Frame >>"): st.session_state.current_frame_idx = min(total_frames - 1, st.session_state.current_frame_idx + 1)
+    # --- NOVO LAYOUT DE CONTROLES ---
+    nav_col1, nav_col2, nav_col3 = st.columns([2, 3, 2])
+    with nav_col1:
+        if st.button("<< Frame Anterior"):
+            st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
+    with nav_col3:
+        if st.button("Próximo Frame >>"):
+            st.session_state.current_frame_idx = min(total_frames - 1, st.session_state.current_frame_idx + 1)
     
+    with nav_col2:
+        # Este widget de input agora controla e exibe o frame atual
+        st.number_input(
+            "Ir para o Frame:",
+            min_value=0,
+            max_value=total_frames - 1,
+            step=1,
+            key="current_frame_idx" # A chave 'key' sincroniza o widget com o st.session_state
+        )
+
     cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame_idx)
     success, frame = cap.read()
-    if success: col2.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Exibindo Frame: {st.session_state.current_frame_idx} / {total_frames-1}")
+    if success: 
+        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Exibindo Frame: {st.session_state.current_frame_idx} / {total_frames-1}")
         
     if st.button("Confirmar Frame e Iniciar Configuração", type="primary"):
         st.session_state.initial_frame = frame
@@ -320,7 +335,7 @@ if st.session_state.step == "configuration":
     if st.session_state.results:
         st.markdown("---")
         st.markdown("## ✅ Resultados da Análise Principal")
-        img_estrob_bytes, df_final, figura_graficos, carimbos_data = st.session_state.results
+        img_estrob_bytes, df_final, figura_graficos = st.session_state.results
 
         if img_estrob_bytes:
             with st.expander("Resultados Detalhados", expanded=True):
