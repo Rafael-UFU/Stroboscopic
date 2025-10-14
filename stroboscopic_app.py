@@ -147,7 +147,8 @@ st.markdown("### Uma ferramenta para extrair dados cinemáticos de vídeos com c
 # Inicializa o estado da sessão
 if 'step' not in st.session_state:
     st.session_state.step = "upload"
-# ... (outras inicializações)
+if 'results' not in st.session_state:
+    st.session_state.results = None
 
 # --- PASSO 0: UPLOAD ---
 if st.session_state.step == "upload":
@@ -157,6 +158,8 @@ if st.session_state.step == "upload":
     if video_file:
         st.session_state.video_bytes = video_file.getvalue()
         st.session_state.step = "frame_selection"
+        # Limpa resultados antigos se um novo vídeo for carregado
+        st.session_state.results = None 
         st.rerun()
 
 # --- PASSO 1: SELEÇÃO DO FRAME INICIAL ---
@@ -196,10 +199,10 @@ if st.session_state.step == "frame_selection":
     cap.release()
     os.remove(video_path)
 
-# --- PASSO 2: CONFIGURAÇÃO E CALIBRAÇÃO (INTEGRADO) ---
+# --- PASSO 2: CONFIGURAÇÃO E ANÁLISE (INTEGRADO) ---
 if st.session_state.step == "configuration":
-    st.markdown("## Passo 3: Configuração e Calibração")
-    st.info("Use a grade para definir a origem, a escala e a área do objeto. As marcações serão atualizadas na imagem.")
+    st.markdown("## Passo 3: Configuração e Análise")
+    st.info("Use a grade para definir os parâmetros e clique em 'Iniciar Análise' para ver os resultados. Você pode ajustar os valores e reanalisar a qualquer momento.")
 
     frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame)
     altura_total, _, _ = frame_com_grade.shape
@@ -232,86 +235,84 @@ if st.session_state.step == "configuration":
         fator_dist = st.slider("Espaçamento na Imagem (u.m.)", 0.01, 2.0, 0.1, 0.01, help="Distância MÍNIMA (em u.m.) que o objeto precisa se mover para ser 'carimbado' na imagem final.")
         
         # Botão de processamento
-        if st.button("🚀 Iniciar Análise Completa", type="primary", use_container_width=True):
-            # Conversões e Cálculos Finais
-            orig_y_opencv = altura_total - orig_y_usuario
-            origin_coords = (orig_x, orig_y_opencv)
-            
-            y1_opencv = altura_total - y1_usuario
-            y2_opencv = altura_total - y2_usuario
-            length_pixels = np.sqrt((x2 - x1)**2 + (y2_opencv - y1_opencv)**2)
-            
-            if length_pixels > 0:
-                scale_factor = distancia_real / length_pixels
+        if st.button("🚀 Iniciar / Atualizar Análise", type="primary", use_container_width=True):
+            status_text = st.empty()
+            with st.spinner("Analisando o vídeo..."):
+                # Conversões e Cálculos
+                orig_y_opencv = altura_total - orig_y_usuario
+                origin_coords = (orig_x, orig_y_opencv)
                 
-                obj_y_opencv = altura_total - obj_y_usuario - obj_h
-                bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
+                y1_opencv = altura_total - y1_usuario
+                y2_opencv = altura_total - y2_usuario
+                length_pixels = np.sqrt((x2 - x1)**2 + (y2_opencv - y1_opencv)**2)
                 
-                # Salva no estado da sessão para o próximo passo
-                st.session_state.origin_coords = origin_coords
-                st.session_state.scale_factor = scale_factor
-                st.session_state.bbox = bbox_opencv
-                st.session_state.fator_dist = fator_dist
-                st.session_state.step = "processing"
-                st.rerun()
-            else:
-                st.error("A distância da escala em pixels não pode ser zero.")
+                if length_pixels > 0:
+                    scale_factor = distancia_real / length_pixels
+                    
+                    obj_y_opencv = altura_total - obj_y_usuario - obj_h
+                    bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
+                    
+                    # Chama a função de processamento e armazena os resultados no estado da sessão
+                    st.session_state.results = processar_video(
+                        st.session_state.video_bytes,
+                        st.session_state.initial_frame,
+                        st.session_state.current_frame_idx,
+                        bbox_opencv,
+                        fator_dist,
+                        scale_factor,
+                        origin_coords,
+                        status_text
+                    )
+                else:
+                    st.error("A distância da escala em pixels não pode ser zero.")
 
     with col_preview:
         frame_para_preview = frame_com_grade.copy()
         
         # Desenha a Origem
-        orig_y_opencv = altura_total - orig_y_usuario
-        cv2.circle(frame_para_preview, (orig_x, orig_y_opencv), 10, (255, 0, 255), -1) # Magenta
-        cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+        orig_y_opencv_preview = altura_total - orig_y_usuario
+        cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1) # Magenta
+        cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv_preview), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
 
         # Desenha a Escala
-        y1_opencv = altura_total - y1_usuario
-        y2_opencv = altura_total - y2_usuario
-        cv2.circle(frame_para_preview, (x1, y1_opencv), 5, (0, 255, 255), -1) # Ciano
-        cv2.circle(frame_para_preview, (x2, y2_opencv), 5, (0, 255, 255), -1) # Ciano
-        cv2.line(frame_para_preview, (x1, y1_opencv), (x2, y2_opencv), (0, 255, 255), 2)
+        y1_opencv_preview = altura_total - y1_usuario
+        y2_opencv_preview = altura_total - y2_usuario
+        cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1) # Ciano
+        cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1) # Ciano
+        cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
         
         # Desenha o Bounding Box
-        obj_y_opencv = altura_total - obj_y_usuario - obj_h
+        obj_y_opencv_preview = altura_total - obj_y_usuario - obj_h
         if obj_w > 0 and obj_h > 0:
-            cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv), (obj_x + obj_w, obj_y_opencv + obj_h), (255, 0, 0), 2)
+            cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
         
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Use a grade como referência para os parâmetros.')
 
+    # --- Seção de Resultados (só aparece se houver resultados) ---
+    if st.session_state.results:
+        st.markdown("---")
+        st.markdown("## ✅ Resultados da Análise")
+        
+        resultado_img, resultado_csv, figura_graficos = st.session_state.results
 
-# --- PASSO 3: PROCESSAMENTO E RESULTADOS ---
-if st.session_state.step == "processing":
-    st.markdown("## ✅ Resultados da Análise")
-    status_text = st.empty()
-    
-    resultado_img, resultado_csv, figura_graficos = processar_video(
-        st.session_state.video_bytes,
-        st.session_state.initial_frame,
-        st.session_state.current_frame_idx,
-        st.session_state.bbox,
-        st.session_state.fator_dist,
-        st.session_state.scale_factor,
-        st.session_state.origin_coords,
-        status_text
-    )
+        if resultado_img is not None and resultado_csv is not None and figura_graficos is not None:
+            with st.expander("Ver Resultados Detalhados", expanded=True):
+                st.markdown("### Imagem Estroboscópica")
+                st.image(resultado_img)
+                st.download_button("💾 Baixar Imagem (.png)", resultado_img, "imagem_estroboscopica.png", "image/png", use_container_width=True)
+                
+                st.markdown("### Gráficos de Cinemática")
+                st.pyplot(figura_graficos)
+                
+                st.markdown("### Tabela de Dados Completa")
+                df_resultado = pd.read_csv(BytesIO(resultado_csv))
+                st.dataframe(df_resultado)
+                st.download_button("💾 Baixar Dados (CSV)", resultado_csv, "dados_trajetoria.csv", "text/csv", use_container_width=True)
+        else:
+            st.error("Falha na análise. O rastreador pode ter perdido o objeto. Verifique a seleção do objeto e tente novamente.")
 
-    if resultado_img and resultado_csv and figura_graficos:
-        st.markdown("### Imagem Estroboscópica")
-        st.image(resultado_img)
-        st.download_button("💾 Baixar Imagem (.png)", resultado_img, "imagem_estroboscopica.png", "image/png", use_container_width=True)
-        
-        st.markdown("### Gráficos de Cinemática")
-        st.pyplot(figura_graficos)
-        
-        st.markdown("### Tabela de Dados Completa")
-        df_resultado = pd.read_csv(BytesIO(resultado_csv))
-        st.dataframe(df_resultado)
-        st.download_button("💾 Baixar Dados (CSV)", resultado_csv, "dados_trajetoria.csv", "text/csv", use_container_width=True)
-        
-        if st.button("Analisar outro vídeo"):
-            for key in st.session_state.keys():
-                del st.session_state[key]
-            st.rerun()
-    else:
-        st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
+    # Botão para recomeçar
+    if st.button("Analisar outro vídeo"):
+        for key in st.session_state.keys():
+            del st.session_state[key]
+        st.rerun()
