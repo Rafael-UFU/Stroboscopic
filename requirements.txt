@@ -1,3 +1,4 @@
+# Forçando a reconstrução do ambiente em 2025-10-13
 opencv-contrib-python
 numpy
 streamlit==1.32.0
