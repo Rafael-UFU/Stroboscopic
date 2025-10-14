@@ -39,7 +39,7 @@ if st.session_state.step == "upload":
     if video_file:
         st.session_state.video_bytes = video_file.getvalue()
         st.session_state.step = "frame_selection"
-        st.experimental_rerun() # Reinicia o script para ir para o próximo passo
+        st.rerun() # Reinicia o script para ir para o próximo passo
 
 # --- PASSO 1: SELEÇÃO DO FRAME INICIAL ---
 if st.session_state.step == "frame_selection":
@@ -73,7 +73,7 @@ if st.session_state.step == "frame_selection":
     if st.button("Confirmar Frame e Iniciar Calibração", type="primary"):
         st.session_state.initial_frame = frame
         st.session_state.step = "calibration"
-        st.experimental_rerun()
+        st.rerun()
     
     cap.release()
     os.remove(video_path)
@@ -117,7 +117,7 @@ if st.session_state.step == "calibration":
                 st.session_state.scale_factor = length_real / length_pixels
                 st.success(f"Fator de Escala calculado: {st.session_state.scale_factor:.6f} m/pixel")
                 st.session_state.step = "origin_setting"
-                st.experimental_rerun()
+                st.rerun()
 
 # --- PASSO 3: DEFINIÇÃO DA ORIGEM ---
 if st.session_state.step == "origin_setting":
@@ -154,7 +154,7 @@ if st.session_state.step == "origin_setting":
                 st.session_state.origin_coords = (x, y)
                 st.success("Origem definida com sucesso!")
                 st.session_state.step = "roi_selection"
-                st.experimental_rerun()
+                st.rerun()
 
 # --- PASSO 4: SELEÇÃO DO OBJETO (ROI) ---
 if st.session_state.step == "roi_selection":
@@ -187,7 +187,7 @@ if st.session_state.step == "roi_selection":
             st.session_state.bbox = bbox_opencv
             st.session_state.fator_dist = fator_dist
             st.session_state.step = "processing"
-            st.experimental_rerun()
+            st.rerun()
             
     with col_preview:
         frame_para_preview = frame_com_grade.copy()
@@ -229,7 +229,7 @@ if st.session_state.step == "processing":
             # Limpa o estado da sessão para recomeçar
             for key in st.session_state.keys():
                 del st.session_state[key]
-            st.experimental_rerun()
+            st.rerun()
     else:
         st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
 
