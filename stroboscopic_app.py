@@ -216,7 +216,7 @@ if st.session_state.step == "upload":
         st.session_state.results = None 
         st.rerun()
 
-# --- PASSO 1: SELEÇÃO DO FRAME INICIAL (COM INPUT MANUAL) ---
+# --- PASSO 1: SELEÇÃO DO FRAME INICIAL (COM LAYOUT AJUSTADO) ---
 if st.session_state.step == "frame_selection":
     st.markdown("## Passo 2: Seleção do Frame Inicial")
     st.info("Navegue pelos frames para escolher o momento exato em que a análise deve começar.")
@@ -229,25 +229,28 @@ if st.session_state.step == "frame_selection":
     if 'current_frame_idx' not in st.session_state: 
         st.session_state.current_frame_idx = 0
 
-    # --- NOVO LAYOUT DE CONTROLES ---
-    nav_col1, nav_col2, nav_col3 = st.columns([2, 3, 2])
-    with nav_col1:
+    # --- NOVO PAINEL DE CONTROLE PARA NAVEGAÇÃO ---
+    st.markdown("##### Controles de Navegação")
+    nav_cols = st.columns([2, 3, 2])
+    
+    with nav_cols[0]:
         if st.button("<< Frame Anterior"):
             st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
-    with nav_col3:
+            
+    with nav_cols[2]:
         if st.button("Próximo Frame >>"):
             st.session_state.current_frame_idx = min(total_frames - 1, st.session_state.current_frame_idx + 1)
     
-    with nav_col2:
-        # Este widget de input agora controla e exibe o frame atual
+    with nav_cols[1]:
         st.number_input(
             "Ir para o Frame:",
             min_value=0,
             max_value=total_frames - 1,
             step=1,
-            key="current_frame_idx" # A chave 'key' sincroniza o widget com o st.session_state
+            key="current_frame_idx"
         )
 
+    # Exibe a imagem centralizada abaixo do painel de controle
     cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame_idx)
     success, frame = cap.read()
     if success: 
