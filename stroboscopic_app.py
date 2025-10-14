@@ -231,30 +231,36 @@ if st.session_state.step == "frame_selection":
 
     # --- NOVO PAINEL DE CONTROLE PARA NAVEGAÇÃO ---
     st.markdown("##### Controles de Navegação")
-    nav_cols = st.columns([2, 3, 2])
-    
+    nav_cols = st.columns([1, 1, 1])
+
     with nav_cols[0]:
-        if st.button("<< Frame Anterior"):
+        if st.button("<< Frame Anterior", use_container_width=True):
             st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
             
     with nav_cols[2]:
-        if st.button("Próximo Frame >>"):
+        if st.button("Próximo Frame >>", use_container_width=True):
             st.session_state.current_frame_idx = min(total_frames - 1, st.session_state.current_frame_idx + 1)
     
+    # Colunas aninhadas para centralizar e diminuir o input
     with nav_cols[1]:
-        st.number_input(
-            "Ir para o Frame:",
-            min_value=0,
-            max_value=total_frames - 1,
-            step=1,
-            key="current_frame_idx"
-        )
+        input_cols = st.columns([1, 2, 1])
+        with input_cols[1]:
+            st.number_input(
+                "Ir para o Frame:",
+                min_value=0,
+                max_value=total_frames - 1,
+                step=1,
+                key="current_frame_idx",
+                label_visibility="collapsed"
+            )
 
     # Exibe a imagem centralizada abaixo do painel de controle
     cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame_idx)
     success, frame = cap.read()
     if success: 
-        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Exibindo Frame: {st.session_state.current_frame_idx} / {total_frames-1}")
+        img_cols = st.columns([1, 8, 1])
+        with img_cols[1]:
+            st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Exibindo Frame: {st.session_state.current_frame_idx} / {total_frames-1}")
         
     if st.button("Confirmar Frame e Iniciar Configuração", type="primary"):
         st.session_state.initial_frame = frame
