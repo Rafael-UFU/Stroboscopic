@@ -11,6 +11,26 @@ import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 
+# --- CSS PARA SOBREPOR O CANVAS ---
+st.markdown("""
+<style>
+.canvas-container {
+    position: relative;
+    width: 100%;
+}
+.canvas-container .stImage, .canvas-container canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: auto !important;
+}
+.canvas-container canvas {
+    z-index: 10; /* Garante que o canvas fique por cima */
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- FUNÇÕES DE LÓGICA E PROCESSAMENTO ---
 # (As funções de plotar gráficos e processar vídeo foram movidas para o final para melhor organização)
 
@@ -92,17 +112,21 @@ if st.session_state.step == "calibration":
 
     with col_canvas_calib:
         st.write("1. Desenhe a linha de referência na imagem:")
-        canvas_result_calib = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)",
-            stroke_width=3,
-            stroke_color="#FF0000",
-            background_image=bg_image_calib, # <-- MUDANÇA PRINCIPAL: Passando o objeto PIL diretamente
-            update_streamlit=True,
-            height=altura,
-            width=largura,
-            drawing_mode="line",
-            key="canvas_calib",
-        )
+        with st.container():
+            st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
+            st.image(bg_image_calib, use_column_width='always')
+            canvas_result_calib = st_canvas(
+                fill_color="rgba(255, 165, 0, 0.3)",
+                stroke_width=3,
+                stroke_color="#FF0000",
+                background_color="rgba(0, 0, 0, 0)", # Fundo transparente
+                update_streamlit=True,
+                height=altura,
+                width=largura,
+                drawing_mode="line",
+                key="canvas_calib",
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
 
     with col_input_calib:
         if canvas_result_calib.json_data is not None and canvas_result_calib.json_data["objects"]:
@@ -134,18 +158,22 @@ if st.session_state.step == "origin_setting":
 
     with col_canvas_origin:
         st.write("Clique no ponto de origem:")
-        canvas_result_origin = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)",
-            stroke_width=2,
-            stroke_color="#00FF00",
-            background_image=bg_image_origin, # <-- MUDANÇA PRINCIPAL: Passando o objeto PIL diretamente
-            update_streamlit=True,
-            height=altura,
-            width=largura,
-            drawing_mode="point",
-            point_display_radius=5,
-            key="canvas_origin",
-        )
+        with st.container():
+            st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
+            st.image(bg_image_origin, use_column_width='always')
+            canvas_result_origin = st_canvas(
+                fill_color="rgba(255, 165, 0, 0.3)",
+                stroke_width=2,
+                stroke_color="#00FF00",
+                background_color="rgba(0, 0, 0, 0)", # Fundo transparente
+                update_streamlit=True,
+                height=altura,
+                width=largura,
+                drawing_mode="point",
+                point_display_radius=5,
+                key="canvas_origin",
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
     
     with col_input_origin:
         if canvas_result_origin.json_data is not None and canvas_result_origin.json_data["objects"]:
@@ -237,7 +265,7 @@ if st.session_state.step == "processing":
     else:
         st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
 
-# --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO (MOVIMOVAS PARA O FINAL) ---
+# --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO ---
 
 def plotar_graficos(df):
     plt.style.use('seaborn-v0_8-whitegrid')
