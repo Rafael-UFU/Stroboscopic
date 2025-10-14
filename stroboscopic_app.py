@@ -11,25 +11,33 @@ import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 
-# --- CSS PARA SOBREPOR O CANVAS ---
+# --- CSS PARA GARANTIR A SOBREPOSIÇÃO E AJUSTE DO TAMANHO ---
 st.markdown("""
 <style>
-.canvas-container {
+/* Estilo para o container da imagem e canvas */
+.image-and-canvas-container {
     position: relative;
-    width: 100%;
+    display: inline-block; /* Para que o container se ajuste à imagem */
 }
-.canvas-container .stImage, .canvas-container canvas {
+
+/* Estilo para a imagem dentro do container */
+.image-and-canvas-container img {
+    display: block; /* Remove espaços extras abaixo da imagem */
+    max-width: 100%; /* Garante que a imagem não ultrapasse a largura do pai */
+    height: auto; /* Mantém a proporção da imagem */
+}
+
+/* Estilo para o canvas dentro do container, sobreposto à imagem */
+.image-and-canvas-container canvas {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100% !important;
-    height: auto !important;
-}
-.canvas-container canvas {
-    z-index: 10; /* Garante que o canvas fique por cima */
+    z-index: 1; /* Garante que o canvas fique por cima da imagem */
+    /* Altura e largura serão definidas pelo Python */
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 # --- FUNÇÕES DE LÓGICA E PROCESSAMENTO ---
 # (As funções de plotar gráficos e processar vídeo foram movidas para o final para melhor organização)
@@ -112,16 +120,17 @@ if st.session_state.step == "calibration":
 
     with col_canvas_calib:
         st.write("1. Desenhe a linha de referência na imagem:")
+        # Usamos um container com um ID para aplicar o CSS de sobreposição
         with st.container():
-            st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
-            st.image(bg_image_calib, use_column_width='always')
+            st.markdown('<div class="image-and-canvas-container">', unsafe_allow_html=True)
+            st.image(bg_image_calib, use_column_width='always') # A imagem normal
             canvas_result_calib = st_canvas(
                 fill_color="rgba(255, 165, 0, 0.3)",
                 stroke_width=3,
                 stroke_color="#FF0000",
                 background_color="rgba(0, 0, 0, 0)", # Fundo transparente
                 update_streamlit=True,
-                height=altura,
+                height=altura, # Definir altura e largura explícitas para o canvas
                 width=largura,
                 drawing_mode="line",
                 key="canvas_calib",
@@ -159,15 +168,15 @@ if st.session_state.step == "origin_setting":
     with col_canvas_origin:
         st.write("Clique no ponto de origem:")
         with st.container():
-            st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
-            st.image(bg_image_origin, use_column_width='always')
+            st.markdown('<div class="image-and-canvas-container">', unsafe_allow_html=True)
+            st.image(bg_image_origin, use_column_width='always') # A imagem normal
             canvas_result_origin = st_canvas(
                 fill_color="rgba(255, 165, 0, 0.3)",
                 stroke_width=2,
                 stroke_color="#00FF00",
                 background_color="rgba(0, 0, 0, 0)", # Fundo transparente
                 update_streamlit=True,
-                height=altura,
+                height=altura, # Definir altura e largura explícitas para o canvas
                 width=largura,
                 drawing_mode="point",
                 point_display_radius=5,
@@ -287,7 +296,6 @@ def plotar_graficos(df):
     ax1.set_title('Gráfico de Trajetória', fontsize=16)
     ax1.set_xlabel('Posição X (m)')
     ax1.set_ylabel('Posição Y (m)')
-    ax1.legend()
     ax1.set_aspect('equal', adjustable='box')
 
     # Gráfico 2: Velocidade
