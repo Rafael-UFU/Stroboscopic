@@ -24,7 +24,7 @@ Uma aplicação web construída com Streamlit e OpenCV para analisar o movimento
 
 ## 🚀 Link para a Aplicação Web
 
-**[Acesse a aplicação aqui!](https://stroboscopic-pvy4jugzxv6nnfkzmogyhg.streamlit.app/)**
+**[Acesse a aplicação aqui!](https://stroboscopic-gehjrnqpsm3hrnr3uzvdqg.streamlit.app/)**
 
 ---
 
