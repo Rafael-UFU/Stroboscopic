@@ -9,6 +9,7 @@ from scipy.interpolate import make_interp_spline
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
+from PIL import Image # <-- Importação adicionada
 
 # --- FUNÇÕES DE LÓGICA E PROCESSAMENTO ---
 # (As funções de plotar gráficos e processar vídeo foram movidas para o final para melhor organização)
@@ -39,7 +40,7 @@ if st.session_state.step == "upload":
     if video_file:
         st.session_state.video_bytes = video_file.getvalue()
         st.session_state.step = "frame_selection"
-        st.rerun() # Reinicia o script para ir para o próximo passo
+        st.rerun()
 
 # --- PASSO 1: SELEÇÃO DO FRAME INICIAL ---
 if st.session_state.step == "frame_selection":
@@ -83,8 +84,9 @@ if st.session_state.step == "calibration":
     st.markdown("## Passo 3: Calibração da Escala")
     st.info("Desenhe uma linha sobre um objeto de comprimento conhecido na cena e informe o seu tamanho real.")
 
-    bg_image_calib = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    altura, largura, _ = bg_image_calib.shape
+    bg_image_calib_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
+    bg_image_calib = Image.fromarray(bg_image_calib_np)
+    altura, largura = bg_image_calib.height, bg_image_calib.width
 
     col_canvas_calib, col_input_calib = st.columns(2)
 
@@ -94,7 +96,7 @@ if st.session_state.step == "calibration":
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=3,
             stroke_color="#FF0000",
-            background_image=bg_image_calib, # CORREÇÃO AQUI
+            background_image=bg_image_calib,
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -124,8 +126,9 @@ if st.session_state.step == "origin_setting":
     st.markdown("## Passo 4: Definição da Origem (0, 0)")
     st.info("Clique no ponto da imagem que será a origem do seu sistema de coordenadas.")
 
-    bg_image_origin = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
-    altura, largura, _ = bg_image_origin.shape
+    bg_image_origin_np = cv2.cvtColor(st.session_state.initial_frame, cv2.COLOR_BGR2RGB)
+    bg_image_origin = Image.fromarray(bg_image_origin_np)
+    altura, largura = bg_image_origin.height, bg_image_origin.width
 
     col_canvas_origin, col_input_origin = st.columns(2)
 
@@ -135,7 +138,7 @@ if st.session_state.step == "origin_setting":
             fill_color="rgba(255, 165, 0, 0.3)",
             stroke_width=2,
             stroke_color="#00FF00",
-            background_image=bg_image_origin, # CORREÇÃO AQUI
+            background_image=bg_image_origin,
             update_streamlit=True,
             height=altura,
             width=largura,
@@ -181,7 +184,7 @@ if st.session_state.step == "roi_selection":
         bbox_opencv = (x, y_opencv, w, h)
         
         st.markdown("#### Parâmetros de Geração")
-        fator_dist = st.slider("Espaçamento na Imagem Estroboscópica", 0.1, 3.0, 0.8, 0.1, help="Define o quão longe o objeto precisa se mover para ser 'carimbado' na imagem final.")
+        fator_dist = st.slider("Espaçamento na Imagem (metros)", 0.01, 2.0, 0.1, 0.01, help="Distância MÍNIMA (em metros) que o objeto precisa se mover para ser 'carimbado' na imagem final.")
 
         if st.button("🚀 Iniciar Análise Completa", type="primary", use_container_width=True):
             st.session_state.bbox = bbox_opencv
