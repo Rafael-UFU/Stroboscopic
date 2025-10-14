@@ -8,7 +8,6 @@ from io import BytesIO
 from scipy.interpolate import make_interp_spline
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
-from PIL import Image
 
 # --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO ---
 
@@ -18,7 +17,7 @@ def plotar_graficos(df):
     fig.tight_layout(pad=5.0)
 
     # Gráfico 1: Trajetória
-    x, y = df['pos_x_m'].to_numpy(), df['pos_y_m'].to_numpy()
+    x, y = df['pos_x_um'].to_numpy(), df['pos_y_um'].to_numpy()
     ax1.scatter(x, y, label='Pontos Observados', color='blue', alpha=0.6, s=10)
     if len(x) > 3:
         try:
@@ -30,23 +29,23 @@ def plotar_graficos(df):
         except:
             ax1.plot(x, y, label='Linha de Trajetória', color='red', linewidth=2, alpha=0.8)
     ax1.set_title('Gráfico de Trajetória', fontsize=16)
-    ax1.set_xlabel('Posição X (m)')
-    ax1.set_ylabel('Posição Y (m)')
+    ax1.set_xlabel('Posição X (u.m.)')
+    ax1.set_ylabel('Posição Y (u.m.)')
     ax1.legend()
     ax1.set_aspect('equal', adjustable='box')
 
     # Gráfico 2: Velocidade
-    ax2.plot(df['tempo_s'], df['velocidade_m_s'], label='Velocidade', color='green')
+    ax2.plot(df['tempo_s'], df['velocidade_um_s'], label='Velocidade', color='green')
     ax2.set_title('Magnitude da Velocidade vs. Tempo', fontsize=16)
     ax2.set_xlabel('Tempo (s)')
-    ax2.set_ylabel('Velocidade (m/s)')
+    ax2.set_ylabel('Velocidade (u.m./s)')
     ax2.legend()
 
     # Gráfico 3: Aceleração
-    ax3.plot(df['tempo_s'], df['aceleracao_m_s2'], label='Aceleração', color='purple')
+    ax3.plot(df['tempo_s'], df['aceleracao_um_s2'], label='Aceleração', color='purple')
     ax3.set_title('Magnitude da Aceleração vs. Tempo', fontsize=16)
     ax3.set_xlabel('Tempo (s)')
-    ax3.set_ylabel('Aceleração (m/s²)')
+    ax3.set_ylabel('Aceleração (u.m./s²)')
     ax3.legend()
 
     return fig
@@ -117,18 +116,18 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     df = pd.DataFrame(raw_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
     df['tempo_s'] = (df['frame'] - start_frame_idx) / fps
     
-    df['pos_x_m'] = (df['pos_x_px'] - origin_coords[0]) * scale_factor
-    df['pos_y_m'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
+    df['pos_x_um'] = (df['pos_x_px'] - origin_coords[0]) * scale_factor
+    df['pos_y_um'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
     
-    df['velocidade_m_s'] = np.sqrt(df['pos_x_m'].diff()**2 + df['pos_y_m'].diff()**2) / df['tempo_s'].diff()
+    df['velocidade_um_s'] = np.sqrt(df['pos_x_um'].diff()**2 + df['pos_y_um'].diff()**2) / df['tempo_s'].diff()
     window_len = min(51, len(df) - 2 if len(df) % 2 == 0 else len(df) - 1)
     if window_len > 3:
-        df['vel_suavizada'] = savgol_filter(df['velocidade_m_s'].fillna(0), window_len, 3)
+        df['vel_suavizada'] = savgol_filter(df['velocidade_um_s'].fillna(0), window_len, 3)
     else:
-        df['vel_suavizada'] = df['velocidade_m_s']
-    df['aceleracao_m_s2'] = df['vel_suavizada'].diff() / df['tempo_s'].diff()
+        df['vel_suavizada'] = df['velocidade_um_s']
+    df['aceleracao_um_s2'] = df['vel_suavizada'].diff() / df['tempo_s'].diff()
     
-    df_final = df[['frame', 'tempo_s', 'pos_x_m', 'pos_y_m', 'velocidade_m_s', 'aceleracao_m_s2']].copy().fillna(0)
+    df_final = df[['frame', 'tempo_s', 'pos_x_um', 'pos_y_um', 'velocidade_um_s', 'aceleracao_um_s2']].copy().fillna(0)
 
     status_text_element.success(f"Processamento concluído!")
     
@@ -145,17 +144,10 @@ st.set_page_config(layout="wide", page_title="Análise de Movimento por Vídeo")
 st.markdown("# 🔬 Análise de Movimento por Vídeo")
 st.markdown("### Uma ferramenta para extrair dados cinemáticos de vídeos com câmera estática.")
 
-# Inicializa o estado da sessão para controlar o fluxo
+# Inicializa o estado da sessão
 if 'step' not in st.session_state:
     st.session_state.step = "upload"
-if 'initial_frame' not in st.session_state:
-    st.session_state.initial_frame = None
-if 'video_bytes' not in st.session_state:
-    st.session_state.video_bytes = None
-if 'scale_factor' not in st.session_state:
-    st.session_state.scale_factor = None
-if 'origin_coords' not in st.session_state:
-    st.session_state.origin_coords = None
+# ... (outras inicializações)
 
 # --- PASSO 0: UPLOAD ---
 if st.session_state.step == "upload":
@@ -183,10 +175,10 @@ if st.session_state.step == "frame_selection":
 
     col1, col2, col3 = st.columns([1, 8, 1])
     with col1:
-        if st.button("<< Anterior"):
+        if st.button("<< Frame Anterior"):
             st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
     with col3:
-        if st.button("Próximo >>"):
+        if st.button("Próximo Frame >>"):
             st.session_state.current_frame_idx = min(total_frames - 1, st.session_state.current_frame_idx + 1)
     
     cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame_idx)
@@ -196,113 +188,99 @@ if st.session_state.step == "frame_selection":
         if success:
             st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Exibindo Frame: {st.session_state.current_frame_idx} / {total_frames-1}")
         
-    if st.button("Confirmar Frame e Iniciar Calibração", type="primary"):
+    if st.button("Confirmar Frame e Iniciar Configuração", type="primary"):
         st.session_state.initial_frame = frame
-        st.session_state.step = "calibration"
+        st.session_state.step = "configuration"
         st.rerun()
     
     cap.release()
     os.remove(video_path)
 
-# --- PASSO 2: CALIBRAÇÃO DA ESCALA (SIMPLIFICADO) ---
-if st.session_state.step == "calibration":
-    st.markdown("## Passo 3: Calibração da Escala")
-    st.info("Use a grade de referência para encontrar as coordenadas dos pontos inicial e final de um objeto de comprimento conhecido.")
+# --- PASSO 2: CONFIGURAÇÃO E CALIBRAÇÃO (INTEGRADO) ---
+if st.session_state.step == "configuration":
+    st.markdown("## Passo 3: Configuração e Calibração")
+    st.info("Use a grade para definir a origem, a escala e a área do objeto. As marcações serão atualizadas na imagem.")
 
     frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame)
-    
-    col_input, col_img = st.columns(2)
-
-    with col_input:
-        st.markdown("#### 1. Coordenadas do Objeto de Referência")
-        p1, p2 = st.columns(2)
-        x1 = p1.number_input("Ponto 1 - X", min_value=0, step=10)
-        y1 = p2.number_input("Ponto 1 - Y", min_value=0, step=10)
-        x2 = p1.number_input("Ponto 2 - X", min_value=0, step=10)
-        y2 = p2.number_input("Ponto 2 - Y", min_value=0, step=10)
-        
-        st.markdown("#### 2. Comprimento Real")
-        length_real = st.number_input("Comprimento real do objeto (em metros)", min_value=0.01, format="%.4f")
-
-        if st.button("Confirmar Calibração e Definir Origem", type="primary"):
-            length_pixels = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            if length_pixels > 0:
-                st.session_state.scale_factor = length_real / length_pixels
-                st.success(f"Fator de Escala calculado: {st.session_state.scale_factor:.6f} m/pixel")
-                st.session_state.step = "origin_setting"
-                st.rerun()
-            else:
-                st.error("A distância em pixels não pode ser zero. Verifique as coordenadas.")
-    
-    with col_img:
-        st.image(cv2.cvtColor(frame_com_grade, cv2.COLOR_BGR2RGB), caption="Use a grade para encontrar as coordenadas dos pontos.")
-
-# --- PASSO 3: DEFINIÇÃO DA ORIGEM (SIMPLIFICADO) ---
-if st.session_state.step == "origin_setting":
-    st.markdown("## Passo 4: Definição da Origem (0, 0)")
-    st.info("Use a grade de referência para encontrar as coordenadas do ponto que será a origem do sistema.")
-
-    frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame)
-    
-    col_input_orig, col_img_orig = st.columns(2)
-
-    with col_input_orig:
-        st.markdown("#### Coordenadas da Origem")
-        orig_x = st.number_input("Origem - X", min_value=0, step=10)
-        orig_y = st.number_input("Origem - Y", min_value=0, step=10)
-        
-        if st.button("Confirmar Origem e Selecionar Objeto", type="primary"):
-            altura_total, _, _ = st.session_state.initial_frame.shape
-            # Converte a coordenada Y do usuário (de baixo para cima) para a do OpenCV (de cima para baixo)
-            orig_y_opencv = altura_total - orig_y
-            st.session_state.origin_coords = (orig_x, orig_y_opencv)
-            st.success(f"Origem definida em ({orig_x}, {orig_y}).")
-            st.session_state.step = "roi_selection"
-            st.rerun()
-            
-    with col_img_orig:
-        st.image(cv2.cvtColor(frame_com_grade, cv2.COLOR_BGR2RGB), caption="Use a grade para encontrar as coordenadas da origem.")
-
-# --- PASSO 4: SELEÇÃO DO OBJETO (ROI) ---
-if st.session_state.step == "roi_selection":
-    st.markdown("## Passo 5: Seleção do Objeto a ser Rastreado")
-    st.info("Use a grade de referência e a origem marcada para definir a área inicial do objeto.")
-
-    frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame, intervalo=100)
-    orig_x, orig_y = int(st.session_state.origin_coords[0]), int(st.session_state.origin_coords[1])
-    cv2.circle(frame_com_grade, (orig_x, orig_y), 10, (255, 0, 255), -1)
-    cv2.putText(frame_com_grade, "(0,0)", (orig_x + 15, orig_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
-    
     altura_total, _, _ = frame_com_grade.shape
+    
     col_config, col_preview = st.columns([1, 2])
 
     with col_config:
-        st.markdown("#### Parâmetros de Seleção")
-        x = st.number_input("Coordenada X (do canto esquerdo do objeto)", min_value=0, step=10)
-        y_usuario = st.number_input("Coordenada Y (do canto INFERIOR do objeto)", min_value=0, step=10)
-        w = st.number_input("Largura (Width)", min_value=10, value=50, step=10)
-        h = st.number_input("Altura (Height)", min_value=10, value=50, step=10)
+        st.markdown("#### 1. Definição da Origem (0,0)")
+        orig_x = st.number_input("Origem - X", min_value=0, step=10, key="orig_x")
+        orig_y_usuario = st.number_input("Origem - Y (contado de baixo)", min_value=0, step=10, key="orig_y")
         
-        y_opencv = altura_total - y_usuario - h
-        bbox_opencv = (x, y_opencv, w, h)
-        
-        st.markdown("#### Parâmetros de Geração")
-        fator_dist = st.slider("Espaçamento na Imagem (metros)", 0.01, 2.0, 0.1, 0.01, help="Distância MÍNIMA (em metros) que o objeto precisa se mover para ser 'carimbado' na imagem final.")
+        st.markdown("---")
+        st.markdown("#### 2. Calibração da Escala")
+        p1, p2 = st.columns(2)
+        x1 = p1.number_input("Ponto 1 - X", min_value=0, step=10, key="x1")
+        y1_usuario = p2.number_input("Ponto 1 - Y (de baixo)", min_value=0, step=10, key="y1")
+        x2 = p1.number_input("Ponto 2 - X", min_value=0, step=10, key="x2")
+        y2_usuario = p2.number_input("Ponto 2 - Y (de baixo)", min_value=0, step=10, key="y2")
+        distancia_real = st.number_input("Distância real entre os pontos (em u.m.)", min_value=0.01, value=1.0, format="%.4f", key="dist_real")
 
+        st.markdown("---")
+        st.markdown("#### 3. Seleção do Objeto")
+        obj_x = st.number_input("Objeto - X (canto esquerdo)", min_value=0, step=10, key="obj_x")
+        obj_y_usuario = st.number_input("Objeto - Y (canto inferior)", min_value=0, step=10, key="obj_y")
+        obj_w = st.number_input("Largura do Objeto", min_value=10, value=50, step=10, key="obj_w")
+        obj_h = st.number_input("Altura do Objeto", min_value=10, value=50, step=10, key="obj_h")
+
+        st.markdown("---")
+        st.markdown("#### 4. Parâmetros de Geração")
+        fator_dist = st.slider("Espaçamento na Imagem (u.m.)", 0.01, 2.0, 0.1, 0.01, help="Distância MÍNIMA (em u.m.) que o objeto precisa se mover para ser 'carimbado' na imagem final.")
+        
+        # Botão de processamento
         if st.button("🚀 Iniciar Análise Completa", type="primary", use_container_width=True):
-            st.session_state.bbox = bbox_opencv
-            st.session_state.fator_dist = fator_dist
-            st.session_state.step = "processing"
-            st.rerun()
+            # Conversões e Cálculos Finais
+            orig_y_opencv = altura_total - orig_y_usuario
+            origin_coords = (orig_x, orig_y_opencv)
             
+            y1_opencv = altura_total - y1_usuario
+            y2_opencv = altura_total - y2_usuario
+            length_pixels = np.sqrt((x2 - x1)**2 + (y2_opencv - y1_opencv)**2)
+            
+            if length_pixels > 0:
+                scale_factor = distancia_real / length_pixels
+                
+                obj_y_opencv = altura_total - obj_y_usuario - obj_h
+                bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
+                
+                # Salva no estado da sessão para o próximo passo
+                st.session_state.origin_coords = origin_coords
+                st.session_state.scale_factor = scale_factor
+                st.session_state.bbox = bbox_opencv
+                st.session_state.fator_dist = fator_dist
+                st.session_state.step = "processing"
+                st.rerun()
+            else:
+                st.error("A distância da escala em pixels não pode ser zero.")
+
     with col_preview:
         frame_para_preview = frame_com_grade.copy()
-        if w > 0 and h > 0:
-            cv2.rectangle(frame_para_preview, (x, y_opencv), (x + w, y_opencv + h), (255, 0, 0), 2)
         
-        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Ajuste os valores até o retângulo azul envolver seu objeto.')
+        # Desenha a Origem
+        orig_y_opencv = altura_total - orig_y_usuario
+        cv2.circle(frame_para_preview, (orig_x, orig_y_opencv), 10, (255, 0, 255), -1) # Magenta
+        cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
 
-# --- PASSO 5: PROCESSAMENTO E RESULTADOS ---
+        # Desenha a Escala
+        y1_opencv = altura_total - y1_usuario
+        y2_opencv = altura_total - y2_usuario
+        cv2.circle(frame_para_preview, (x1, y1_opencv), 5, (0, 255, 255), -1) # Ciano
+        cv2.circle(frame_para_preview, (x2, y2_opencv), 5, (0, 255, 255), -1) # Ciano
+        cv2.line(frame_para_preview, (x1, y1_opencv), (x2, y2_opencv), (0, 255, 255), 2)
+        
+        # Desenha o Bounding Box
+        obj_y_opencv = altura_total - obj_y_usuario - obj_h
+        if obj_w > 0 and obj_h > 0:
+            cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv), (obj_x + obj_w, obj_y_opencv + obj_h), (255, 0, 0), 2)
+        
+        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Use a grade como referência para os parâmetros.')
+
+
+# --- PASSO 3: PROCESSAMENTO E RESULTADOS ---
 if st.session_state.step == "processing":
     st.markdown("## ✅ Resultados da Análise")
     status_text = st.empty()
