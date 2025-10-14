@@ -6,7 +6,6 @@ import tempfile
 import os
 from io import BytesIO
 from scipy.interpolate import make_interp_spline
-from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -55,7 +54,7 @@ def plotar_graficos(df):
     gs = gridspec.GridSpec(2, 2, figure=fig)
     fig.tight_layout(pad=6.0)
 
-    # Gráfico 1: Trajetória (ocupa a primeira linha inteira)
+    # Gráfico 1: Trajetória
     ax1 = fig.add_subplot(gs[0, :])
     x, y = df['pos_x_um'].to_numpy(), df['pos_y_um'].to_numpy()
     ax1.scatter(x, y, label='Pontos Observados', color='blue', alpha=0.6, s=10)
@@ -74,17 +73,17 @@ def plotar_graficos(df):
     ax1.legend()
     ax1.set_aspect('equal', adjustable='box')
 
-    # Gráfico 2: Velocidade em X (Suavizada)
+    # Gráfico 2: Velocidade em X
     ax2 = fig.add_subplot(gs[1, 0])
-    ax2.plot(df['tempo_s'], df['vx_um_s'], label='Velocidade em X (suavizada)', color='green')
+    ax2.plot(df['tempo_s'], df['vx_um_s'], label='Velocidade em X', color='green', marker='o', linestyle='--')
     ax2.set_title('Velocidade na Direção X vs. Tempo', fontsize=16)
     ax2.set_xlabel('Tempo (s)')
     ax2.set_ylabel('Velocidade (u.m./s)')
     ax2.legend()
 
-    # Gráfico 3: Velocidade em Y (Suavizada)
+    # Gráfico 3: Velocidade em Y
     ax3 = fig.add_subplot(gs[1, 1])
-    ax3.plot(df['tempo_s'], df['vy_um_s'], label='Velocidade em Y (suavizada)', color='orange')
+    ax3.plot(df['tempo_s'], df['vy_um_s'], label='Velocidade em Y', color='orange', marker='o', linestyle='--')
     ax3.set_title('Velocidade na Direção Y vs. Tempo', fontsize=16)
     ax3.set_xlabel('Tempo (s)')
     ax3.set_ylabel('Velocidade (u.m./s)')
@@ -122,7 +121,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     imagem_estroboscopica = initial_frame.copy()
     altura_frame, largura_frame, _ = initial_frame.shape
     
-    raw_data, carimbos_data = [], []
+    carimbos_data = []
     posicao_ultimo_carimbo_px = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
     carimbos_data.append([start_frame_idx, posicao_ultimo_carimbo_px[0], posicao_ultimo_carimbo_px[1]])
 
@@ -139,8 +138,6 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
         success_track, bbox_atual = tracker.update(frame_atual)
         if success_track:
             centro_atual_px = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
-            raw_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
-            
             dist_pixels = np.sqrt((centro_atual_px[0] - posicao_ultimo_carimbo_px[0])**2 + (centro_atual_px[1] - posicao_ultimo_carimbo_px[1])**2)
             
             if dist_pixels * scale_factor >= fator_distancia:
@@ -155,46 +152,37 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
         contador_frames_processados += 1
     
     cap.release(), os.remove(video_path)
-    if not raw_data: return None
+    if len(carimbos_data) < 2: return None
     
-    df = pd.DataFrame(raw_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
-    df['tempo_s'] = (df['frame'] - start_frame_idx) / fps
-    df['pos_x_um'] = (df['pos_x_px'] - origin_coords[0]) * scale_factor
-    df['pos_y_um'] = -(df['pos_y_px'] - origin_coords[1]) * scale_factor
+    # --- 3) CÁLCULO DA VELOCIDADE CORRIGIDO (BASEADO NOS CARIMBOS) ---
+    df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
+    df_carimbos['tempo_s'] = (df_carimbos['frame'] - start_frame_idx) / fps
+    df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
+    df_carimbos['pos_y_um'] = -(df_carimbos['pos_y_px'] - origin_coords[1]) * scale_factor
     
-    delta_t = df['tempo_s'].diff()
-    vx_raw = df['pos_x_um'].diff() / delta_t
-    vy_raw = df['pos_y_um'].diff() / delta_t
+    delta_t = df_carimbos['tempo_s'].diff()
+    df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
+    df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / delta_t
     
-    # --- 2) SUAVIZAÇÃO DA VELOCIDADE ---
-    window_len = min(51, len(df) - 2 if len(df) % 2 == 0 else len(df) - 1)
-    if window_len > 3:
-        df['vx_um_s'] = savgol_filter(vx_raw.fillna(0), window_len, 3)
-        df['vy_um_s'] = savgol_filter(vy_raw.fillna(0), window_len, 3)
-    else:
-        df['vx_um_s'] = vx_raw
-        df['vy_um_s'] = vy_raw
-
-    # --- 1) REMOÇÃO DA ACELERAÇÃO ---
-    df_final = df[['frame', 'tempo_s', 'pos_x_um', 'pos_y_um', 'vx_um_s', 'vy_um_s']].copy().fillna(0)
+    # Define o primeiro ponto da velocidade como zero
+    df_final = df_carimbos.fillna(0)
     
-    status_text_element.success(f"Processamento concluído!")
+    status_text_element.success(f"Processamento concluído! {len(df_final)} pontos de dados analisados.")
     
     _, buffer_img_estrob = cv2.imencode('.PNG', imagem_estroboscopica)
     img_estrob_bytes = BytesIO(buffer_img_estrob).getvalue()
     
     figura_graficos = plotar_graficos(df_final)
     
+    # A função retorna o df_final que agora é baseado nos carimbos
     return img_estrob_bytes, df_final, figura_graficos, carimbos_data
 
-def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_completo, carimbos_data, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
+def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_analisado, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
     imagem_com_vetores = imagem_estroboscopica_original.copy()
-    df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
-    df_merged = pd.merge(df_carimbos, df_completo, on='frame', how='left')
 
-    for i in range(1, len(df_merged)):
-        p_start_px = (int(df_merged.loc[i, 'pos_x_px']), int(df_merged.loc[i, 'pos_y_px']))
-        vx, vy = df_merged.loc[i, 'vx_um_s'], df_merged.loc[i, 'vy_um_s']
+    for i in range(1, len(df_analisado)):
+        p_start_px = (int(df_analisado.loc[i, 'pos_x_px']), int(df_analisado.loc[i, 'pos_y_px']))
+        vx, vy = df_analisado.loc[i, 'vx_um_s'], df_analisado.loc[i, 'vy_um_s']
         vel_magnitude = np.sqrt(vx**2 + vy**2)
 
         if not np.isnan(vx) and not np.isnan(vy) and vel_magnitude > 0:
@@ -221,11 +209,10 @@ if st.session_state.step == "upload":
     with col1:
         st.markdown("## Passo 1: Upload do Vídeo")
     with col2:
-        # --- 3 & 4) BOTÃO MOVIDO PARA O TOPO ---
         if st.button("🔄 Analisar novo vídeo"):
-            for key in st.session_state.keys():
-                if key != 'step': # Mantém o estado do passo para não quebrar a lógica
-                    st.session_state[key] = None
+            # Limpa tudo para um recomeço limpo
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
 
     video_file = st.file_uploader("Escolha um arquivo de vídeo (MP4, AVI, MOV)", type=["mp4", "avi", "mov"], label_visibility="collapsed")
@@ -281,7 +268,6 @@ if st.session_state.step == "configuration":
         y1_usuario = p2.number_input("Ponto 1 - Y (de baixo)", 0, step=10, key="y1")
         x2 = p1.number_input("Ponto 2 - X", 0, step=10, key="x2")
         y2_usuario = p2.number_input("Ponto 2 - Y (de baixo)", 0, step=10, key="y2")
-        # --- 1) VALOR PADRÃO REMOVIDO PARA PERMITIR QUALQUER VALOR ---
         distancia_real = st.number_input("Distância real entre os pontos (em u.m.)", min_value=0.01, format="%.4f", key="dist_real")
         st.markdown("---")
         st.markdown("#### 3. Seleção do Objeto")
@@ -329,7 +315,13 @@ if st.session_state.step == "configuration":
         cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
         obj_y_opencv_preview = altura_total - obj_y_usuario - obj_h
         if obj_w > 0 and obj_h > 0: cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
+        
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Use a grade como referência para os parâmetros.')
+        
+        # --- 1) BOTÃO PARA BAIXAR IMAGEM DE CONFIGURAÇÃO ---
+        _, buffer_preview = cv2.imencode('.PNG', cv2.cvtColor(frame_para_preview, cv2.COLOR_RGB2BGR))
+        preview_bytes = BytesIO(buffer_preview).getvalue()
+        st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
 
     if st.session_state.results:
         st.markdown("---")
@@ -360,14 +352,22 @@ if st.session_state.step == "configuration":
                 
                 if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
                     imagem_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
-                    img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_final, carimbos_data, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
+                    # Passa o df_final que agora é baseado nos carimbos
+                    img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_final, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
                     st.session_state.img_vetores = img_vetores_bytes
                 
                 if 'img_vetores' in st.session_state and st.session_state.img_vetores:
                     st.image(st.session_state.img_vetores, caption="Imagem Estroboscópica com Vetores de Velocidade")
                     st.download_button("💾 Baixar Imagem com Vetores (.png)", st.session_state.img_vetores, "imagem_com_vetores.png", "image/png", use_container_width=True)
+            
+            # --- 2) BOTÃO DE REINÍCIO AO FINAL ---
+            st.markdown("---")
+            if st.button("🔄 Analisar outro vídeo", key="final_reset"):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun()
         else:
-            st.error("Falha na análise. O rastreador pode ter perdido o objeto.")
+            st.error("Falha na análise. Nenhum ponto de dados foi gerado. Verifique se o objeto se move o suficiente para o 'Espaçamento na Imagem'.")
 
 # --- Rodapé Informativo ---
 st.markdown("---")
