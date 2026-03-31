@@ -342,7 +342,8 @@ if st.session_state.step == "configuration":
         
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Use a grade como referência para os parâmetros.')
         
-        _, buffer_preview = cv2.imencode('.PNG', cv2.cvtColor(frame_para_preview, cv2.COLOR_RGB2BGR))
+        #_, buffer_preview = cv2.imencode('.PNG', cv2.cvtColor(frame_para_preview, cv2.COLOR_RGB2BGR))
+        _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
         preview_bytes = BytesIO(buffer_preview).getvalue()
         st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
 
