@@ -463,17 +463,23 @@ if st.session_state.results:
     img_estrob_bytes, df_final, figura_graficos, video_track_bytes = st.session_state.results
 
     if img_estrob_bytes:
-        with st.expander("Resultados Detalhados", expanded=True):
+        with st.expander("📊 Resultados Detalhados (Imagens e Gráficos)", expanded=True):
             st.markdown("### Imagem Estroboscópica e Vídeo de Rastreamento")
             res_col1, res_col2 = st.columns(2)
             with res_col1:
                 st.image(img_estrob_bytes, caption="Imagem Composta")
             with res_col2:
-                # O botão de download do vídeo MP4 gerado
-                st.download_button("🎬 Baixar Vídeo com Bounding Box (.mp4)", video_track_bytes, "video_rastreado.mp4", "video/mp4", use_container_width=True)
-                st.download_button("💾 Baixar Imagem (.png)", img_estrob_bytes, "imagem_estroboscopica.png", "image/png", use_container_width=True)
+                st.download_button("🎬 Baixar Vídeo com Rastreio (.mp4)", video_track_bytes, "video_rastreado.mp4", "video/mp4", use_container_width=True)
+                st.download_button("💾 Baixar Imagem Composta (.png)", img_estrob_bytes, "imagem_estroboscopica.png", "image/png", use_container_width=True)
 
-            st.markdown("### Gráficos de Cinemática"); st.pyplot(figura_graficos)
+            st.markdown("### Gráficos de Cinemática")
+            st.pyplot(figura_graficos)
+            
+            # --- RESTAURADO: Tabela e Exportação CSV ---
+            st.markdown("### Tabela de Dados Brutos e Suavizados")
+            st.dataframe(df_final)
+            csv_final_string = st.session_state.csv_header + df_final.to_csv(index=False)
+            st.download_button("💾 Baixar Tabela de Dados (.csv)", csv_final_string, "dados_analise.csv", "text/csv", use_container_width=True)
             
         with st.expander("📈 Ajuste de Curvas Teóricas (Modelos Físicos)"):
             st.info("Compare os dados reais extraídos pelo vídeo com as equações teóricas da física clássica.")
@@ -502,10 +508,49 @@ if st.session_state.results:
             ax_aj.legend(); ax_aj.grid(True)
             st.pyplot(fig_ajuste)
 
+        # --- RESTAURADO: Vetores de Velocidade ---
+        with st.expander("🏹 Análise Adicional: Vetores de Velocidade"):
+            st.info("Ajuste os parâmetros e clique para gerar uma imagem com os vetores direcionais.")
+            cores_bgr = {"Vermelho": (0, 0, 255), "Azul": (255, 0, 0), "Amarelo": (0, 255, 255), "Ciano": (255, 255, 0), "Magenta": (255, 0, 255), "Verde": (0, 255, 0), "Branco": (255, 255, 255), "Laranja": (0, 165, 255)}
+            
+            vec_col1, vec_col2 = st.columns(2)
+            cor_nome = vec_col1.selectbox("Cor do Vetor", options=list(cores_bgr.keys()))
+            espessura_vetor = vec_col2.slider("Espessura do Vetor (px)", 1, 5, 2)
+            scale_vetor_col, max_len_col = st.columns(2)
+            scale_vetor = scale_vetor_col.slider("Escala do Vetor", 1, 200, 50, help="Multiplicador para o comprimento dos vetores.")
+            max_len_vetor = max_len_col.slider("Comprimento Máximo (px)", 10, 200, 100, help="Limite visual do tamanho da seta.")
+            
+            if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
+                imagem_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
+                img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_final, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
+                st.session_state.img_vetores = img_vetores_bytes
+            
+            if 'img_vetores' in st.session_state and st.session_state.img_vetores:
+                st.image(st.session_state.img_vetores, caption="Imagem com Vetores de Velocidade")
+                st.download_button("💾 Baixar Imagem com Vetores (.png)", st.session_state.img_vetores, "imagem_com_vetores.png", "image/png", use_container_width=True)
+
         st.markdown("---")
-        if st.button("🔄 Analisar outro vídeo"):
+        if st.button("🔄 Analisar outro vídeo", key="btn_reset_final"):
             for key in list(st.session_state.keys()): del st.session_state[key]
             st.rerun()
+
+# --- Rodapé Informativo ---
+st.markdown("---")
+with st.expander("💡 Informações Adicionais (Funcionalidades e Dicas)"):
+    st.markdown("#### Funcionalidades e Inovações Técnicas")
+    st.markdown("""
+    - **Rastreio CSRT:** Utiliza o algoritmo *Discriminative Correlation Filter* para rastreamento robusto, resistente a falhas de textura e iluminação.
+    - **Homografia (Correção de Perspectiva):** Permite corrigir vídeos gravados fora de esquadro antes do rastreamento.
+    - **Exportação de Vídeo:** Comprova a validade do experimento permitindo o download do vídeo com o *bounding box* anexado a cada quadro.
+    - **Ajuste de Curvas (Trendlines):** Permite extrair a velocidade ou aceleração constante teórica validando as leis da cinemática clássica (com cálculo rigoroso de $R^2$).
+    - **Suavização Savitzky-Golay:** Derivação polinomial avançada acoplada que limpa ruídos de quantização de pixels e devolve campos de aceleração fisicamente coerentes.
+    """)
+    st.markdown("#### Dicas para Melhores Resultados na Gravação")
+    st.markdown("""
+    - **Câmera Estritamente Estática:** Qualquer vibração destrói a extração matemática das derivadas. Use um tripé.
+    - **A Importância do FPS (Taxa de Quadros):** Para fenômenos muito rápidos, grave com um FPS alto (60 ou 120 FPS). O FPS é a "régua de tempo" da aplicação.
+    - **Taxa de Quadros Variável (VFR):** Evite a câmera padrão do celular se ela variar o FPS durante a gravação. O algoritmo assume uma taxa constante. Variações geram ruído na aceleração.
+    """)
 
 # --- Rodapé Informativo ---
 st.markdown("---")
