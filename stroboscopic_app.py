@@ -6,6 +6,7 @@ import tempfile
 import os
 from io import BytesIO
 from scipy.interpolate import make_interp_spline
+from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -104,7 +105,7 @@ def desenhar_grade_cartesiana(frame, intervalo=100):
         cv2.putText(frame_com_grade, str(y), (10, pos_y_imagem + 5), fonte, escala_fonte, cor_texto, 1)
     return frame_com_grade
 
-def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element):
+def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2):
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_bytes)
     video_path = tfile.name
@@ -157,10 +158,30 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     df_carimbos['tempo_s'] = (df_carimbos['frame'] - start_frame_idx) / fps
     df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
     df_carimbos['pos_y_um'] = -(df_carimbos['pos_y_px'] - origin_coords[1]) * scale_factor
-    
-    delta_t = df_carimbos['tempo_s'].diff()
-    df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
-    df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / delta_t
+
+    # Cálculo de Velocidade (Savitzky-Golay vs Diferenças Finitas) 
+    if len(df_carimbos) > window_size:
+        # Se temos pontos suficientes, usamos a derivação analítica do Savitzky-Golay
+        dt = 1.0 / fps
+        
+        # Opcional, mas recomendado: suavizar a própria posição antes do gráfico
+        df_carimbos['pos_x_um'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=0)
+        df_carimbos['pos_y_um'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=0)
+        
+        # Calcula as velocidades derivando o polinômio
+        df_carimbos['vx_um_s'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
+        df_carimbos['vy_um_s'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
+    else:
+        # Fallback: Se o espaçamento gerar poucos carimbos, retorna para diferenças finitas
+        delta_t = df_carimbos['tempo_s'].diff()
+        df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
+        df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / delta_t
+    # -------------------------------------------------------------------------------
+
+
+
+
+
     
     df_final = df_carimbos.fillna(0)
     
@@ -295,6 +316,14 @@ if st.session_state.step == "configuration":
         st.markdown("---")
         st.markdown("#### 4. Parâmetros de Geração")
         fator_dist = st.slider("Espaçamento na Imagem (u.m.)", 0.01, 5.0, 0.5, 0.01)
+
+        st.markdown("---")
+        st.markdown("#### 5. Suavização Cinemática (Savitzky-Golay)")
+        window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2, help="Deve ser ímpar. Valores maiores geram curvas mais suaves, mas podem atenuar picos reais de velocidade.")
+        poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2, help="Grau do polinômio ajustado. 2 (parábola) é ideal para movimentos com aceleração constante.")
+        
+        if window_size <= poly_order:
+            st.error("Erro: O tamanho da janela deve ser maior que a ordem do polinômio.")
         
         if st.button("🚀 Iniciar / Atualizar Análise", type="primary", use_container_width=True):
             status_text = st.empty()
@@ -322,10 +351,11 @@ if st.session_state.step == "configuration":
                     st.session_state.results = processar_video(
                         st.session_state.video_bytes, 
                         st.session_state.initial_frame, 
-                        # --- CORREÇÃO AQUI: Usa a variável permanente ---
                         st.session_state.start_frame_for_analysis, 
-                        bbox_opencv, fator_dist, scale_factor, origin_coords, status_text
+                        bbox_opencv, fator_dist, scale_factor, origin_coords, status_text,
+                        window_size, poly_order
                     )
+                    
                     st.session_state.csv_header = header_comentarios
                 else: st.error("A distância da escala em pixels não pode ser zero.")
 
