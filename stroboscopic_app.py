@@ -318,7 +318,7 @@ if st.session_state.step == "configuration":
     frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame)
     altura_total, _, _ = frame_com_grade.shape
     
-    # Inicializa variáveis com um valor padrão caso o usuário ainda não tenha interagido
+    # Inicializa variáveis
     orig_x = st.session_state.get('orig_x', 0)
     orig_y_usuario = st.session_state.get('orig_y', 0)
     x1 = st.session_state.get('x1', 0)
@@ -330,7 +330,7 @@ if st.session_state.step == "configuration":
     obj_w = st.session_state.get('obj_w', 50)
     obj_h = st.session_state.get('obj_h', 50)
 
-    # Desenha as marcações na imagem de preview em tempo real
+    # Desenha as marcações na imagem de preview
     frame_para_preview = frame_com_grade.copy()
     orig_y_opencv_preview = altura_total - orig_y_usuario
     y1_opencv_preview = altura_total - y1_usuario
@@ -382,7 +382,7 @@ if st.session_state.step == "configuration":
 
     with col3:
         st.markdown("#### 3. Algoritmo e Suavização")
-        fator_dist = st.slider("Espaçamento de Captura (u.m.)", 0.01, 5.0, 0.5, 0.01, help="Distância mínima que o objeto deve percorrer para ser 'carimbado' na imagem final.")
+        fator_dist = st.slider("Espaçamento de Captura (u.m.)", 0.01, 5.0, 0.5, 0.01, help="Distância mínima que o objeto deve percorrer para ser 'carimbado'.")
         
         st.markdown("**Filtro Savitzky-Golay:**")
         window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
