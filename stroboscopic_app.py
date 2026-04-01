@@ -310,89 +310,115 @@ if st.session_state.step == "frame_selection":
 
 if st.session_state.step == "configuration":
     st.markdown("## Passo 3: Configuração e Análise")
-    st.info("Use a grade para definir os parâmetros e clique em 'Iniciar Análise'. Você pode ajustar os valores e reanalisar a qualquer momento.")
+    st.info("Observe a imagem de referência abaixo e ajuste os parâmetros nas colunas correspondentes. O layout responsivo se adapta à sua tela.")
+    
+    # ---------------------------------------------------------
+    # PARTE 1: IMAGEM DE REFERÊNCIA NO TOPO
+    # ---------------------------------------------------------
     frame_com_grade = desenhar_grade_cartesiana(st.session_state.initial_frame)
     altura_total, _, _ = frame_com_grade.shape
-    col_config, col_preview = st.columns([1, 2])
+    
+    # Inicializa variáveis com um valor padrão caso o usuário ainda não tenha interagido
+    orig_x = st.session_state.get('orig_x', 0)
+    orig_y_usuario = st.session_state.get('orig_y', 0)
+    x1 = st.session_state.get('x1', 0)
+    y1_usuario = st.session_state.get('y1', 0)
+    x2 = st.session_state.get('x2', 0)
+    y2_usuario = st.session_state.get('y2', 0)
+    obj_x = st.session_state.get('obj_x', 0)
+    obj_y_usuario = st.session_state.get('obj_y', 0)
+    obj_w = st.session_state.get('obj_w', 50)
+    obj_h = st.session_state.get('obj_h', 50)
 
-    with col_config:
-        st.markdown("#### 1. Definição da Origem (0,0)")
-        orig_x = st.number_input("Origem - X", 0, step=10, key="orig_x")
-        orig_y_usuario = st.number_input("Origem - Y", 0, step=10, key="orig_y")
-        st.markdown("---")
-        st.markdown("#### 2. Calibração da Escala")
+    # Desenha as marcações na imagem de preview em tempo real
+    frame_para_preview = frame_com_grade.copy()
+    orig_y_opencv_preview = altura_total - orig_y_usuario
+    y1_opencv_preview = altura_total - y1_usuario
+    y2_opencv_preview = altura_total - y2_usuario
+    obj_y_opencv_preview = altura_total - obj_y_usuario - obj_h
+
+    cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
+    cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv_preview), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+    cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
+    cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
+    cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
+    
+    if obj_w > 0 and obj_h > 0: 
+        cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
+    
+    # Exibe a imagem centralizada e grande
+    img_col1, img_col2, img_col3 = st.columns([1, 4, 1])
+    with img_col2:
+        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), use_container_width=True)
+        _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
+        preview_bytes = BytesIO(buffer_preview).getvalue()
+        st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
+
+    st.markdown("---")
+    
+    # ---------------------------------------------------------
+    # PARTE 2: CONTROLES EM GRADE (LADO A LADO)
+    # ---------------------------------------------------------
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("#### 1. Origem e Calibração")
+        orig_x = st.number_input("Origem (0,0) - Eixo X", 0, step=10, key="orig_x")
+        orig_y_usuario = st.number_input("Origem (0,0) - Eixo Y", 0, step=10, key="orig_y")
+        st.markdown("Espaço Real:")
         p1, p2 = st.columns(2)
         x1 = p1.number_input("Ponto 1 - X", 0, step=10, key="x1")
         y1_usuario = p2.number_input("Ponto 1 - Y", 0, step=10, key="y1")
         x2 = p1.number_input("Ponto 2 - X", 0, step=10, key="x2")
         y2_usuario = p2.number_input("Ponto 2 - Y", 0, step=10, key="y2")
-        distancia_real = st.number_input("Distância real entre os pontos (em u.m.)", min_value=0.01, format="%.4f", key="dist_real")
-        st.markdown("---")
-        st.markdown("#### 3. Seleção do Objeto")
-        obj_x = st.number_input("Objeto - X (canto esquerdo)", 0, step=10, key="obj_x")
-        obj_y_usuario = st.number_input("Objeto - Y (canto inferior)", 0, step=10, key="obj_y")
-        obj_w = st.number_input("Largura do Objeto", min_value=10, value=50, step=10, key="obj_w")
-        obj_h = st.number_input("Altura do Objeto", min_value=10, value=50, step=10, key="obj_h")
-        st.markdown("---")
-        st.markdown("#### 4. Parâmetros de Geração")
-        fator_dist = st.slider("Espaçamento na Imagem (u.m.)", 0.01, 5.0, 0.5, 0.01)
+        distancia_real = st.number_input("Distância real (u.m.)", min_value=0.01, format="%.4f", key="dist_real")
 
-        st.markdown("---")
-        st.markdown("#### 5. Suavização Cinemática (Savitzky-Golay)")
-    
-        window_size = st.slider(
-            "Tamanho da Janela", 
-            min_value=5, max_value=51, value=11, step=2, 
-            help="Define quantos quadros o algoritmo analisa por vez para suavizar o movimento."
-        )
+    with col2:
+        st.markdown("#### 2. Rastreamento do Objeto")
+        obj_x = st.number_input("Canto Esquerdo - X", 0, step=10, key="obj_x")
+        obj_y_usuario = st.number_input("Canto Inferior - Y", 0, step=10, key="obj_y")
+        obj_w = st.number_input("Largura", min_value=10, value=50, step=10, key="obj_w")
+        obj_h = st.number_input("Altura", min_value=10, value=50, step=10, key="obj_h")
+
+    with col3:
+        st.markdown("#### 3. Algoritmo e Suavização")
+        fator_dist = st.slider("Espaçamento de Captura (u.m.)", 0.01, 5.0, 0.5, 0.01, help="Distância mínima que o objeto deve percorrer para ser 'carimbado' na imagem final.")
         
-        poly_order = st.slider(
-            "Ordem do Polinômio", 
-            min_value=1, max_value=4, value=2, 
-            help="Grau da equação matemática ajustada aos pontos. Ordem 2 (parábola) é o padrão para cinemática clássica."
-        )
+        st.markdown("**Filtro Savitzky-Golay:**")
+        window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
+        poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
         
-        if window_size <= poly_order:
-            st.error("Erro: O tamanho da janela deve ser maior que a ordem do polinômio.")
-            
-        # Adicionando o botão de ajuda expansível com as dicas didáticas
-        with st.expander("❓ Como escolher os melhores parâmetros?"):
-            st.markdown("""
-            O Filtro de Savitzky-Golay remove o ruído do vídeo ajustando polinômios locais à trajetória.
-            
-            **A Regra de Ouro (Tamanho da Janela):**
-            * **Movimentos Suaves (Queda livre, pêndulo longo):** Janelas maiores (11 a 19) geram curvas limpas e contínuas.
-            * **Eventos Rápidos (Colisões, quiques):** Janelas menores (5 a 9) preservam picos reais de velocidade que seriam "achatados" por janelas grandes.
-            
-            **O "Teste de Sanidade" (Olhe para a Aceleração!):**
-            A melhor forma de calibrar o filtro é observando o gráfico da aceleração. Em uma queda livre, a aceleração teórica é uma linha reta (~9.8 m/s²). 
-            * Se a linha estiver oscilando violentamente como um eletrocardiograma, a janela está **muito pequena**. 
-            * Se a linha fizer curvas suaves como uma onda, a janela está **muito grande** (super-suavização).
-            
-            **Ordem do Polinômio:**
-            A Ordem **2** é ideal para movimentos sob aceleração constante (como a gravidade), pois a equação horária da posição é quadrática.
-            """)
-            
+        with st.expander("❓ Ajuda com Filtros"):
+            st.markdown("Ajuste a janela até que o gráfico de aceleração faça sentido físico. Janelas muito grandes arredondam picos rápidos. A ordem 2 é ideal para mecânica clássica.")
+
+    # ---------------------------------------------------------
+    # PARTE 3: BOTÃO DE AÇÃO PRINCIPAL
+    # ---------------------------------------------------------
+    st.markdown("---")
+    if window_size <= poly_order:
+        st.error("Erro: O tamanho da janela do filtro deve ser maior que a ordem do polinômio.")
+    else:
         if st.button("🚀 Iniciar / Atualizar Análise", type="primary", use_container_width=True):
             status_text = st.empty()
-            with st.spinner("Analisando o vídeo..."):
-                orig_y_opencv, y1_opencv, y2_opencv = altura_total - orig_y_usuario, altura_total - y1_usuario, altura_total - y2_usuario
+            with st.spinner("Extraindo cinemática do vídeo..."):
+                orig_y_opencv = altura_total - orig_y_usuario
+                y1_opencv = altura_total - y1_usuario
+                y2_opencv = altura_total - y2_usuario
                 origin_coords = (orig_x, orig_y_opencv)
                 length_pixels = np.sqrt((x2 - x1)**2 + (y2_opencv - y1_opencv)**2)
+                
                 if length_pixels > 0:
                     scale_factor = distancia_real / length_pixels
                     obj_y_opencv = altura_total - obj_y_usuario - obj_h
                     bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
-                    st.session_state.origin_coords, st.session_state.scale_factor = origin_coords, scale_factor
+                    st.session_state.origin_coords = origin_coords
+                    st.session_state.scale_factor = scale_factor
                     
                     header_comentarios = (
                         f"# Análise de Movimento - {pd.Timestamp.now()}\n"
-                        f"# Parâmetros de Entrada:\n"
-                        # --- CORREÇÃO AQUI: Usa a variável permanente ---
                         f"# Frame Inicial: {st.session_state.start_frame_for_analysis}\n"
-                        f"# Origem (pixels, de cima): {origin_coords}\n"
+                        f"# Origem (pixels): {origin_coords}\n"
                         f"# Fator de Escala: {scale_factor:.6f} u.m./pixel\n"
-                        f"# Objeto Rastreado (x, y, w, h): {bbox_opencv}\n"
                         f"# --- \n"
                     )
 
@@ -403,9 +429,9 @@ if st.session_state.step == "configuration":
                         bbox_opencv, fator_dist, scale_factor, origin_coords, status_text,
                         window_size, poly_order
                     )
-                    
                     st.session_state.csv_header = header_comentarios
-                else: st.error("A distância da escala em pixels não pode ser zero.")
+                else: 
+                    st.error("A distância da calibração na tela não pode ser zero. Marque pontos distintos.")
 
     with col_preview:
         frame_para_preview = frame_com_grade.copy()
