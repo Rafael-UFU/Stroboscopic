@@ -486,13 +486,14 @@ with footer_expander:
     - **Calibração de Espaço:** Defina uma origem (0,0) e uma escala de referência (u.m./pixel) para obter dados em unidades de medida reais.
     - **Rastreamento de Objeto:** Acompanha o objeto selecionado ao longo do vídeo.
     - **Análise Cinemática:** Calcula e exibe dados de posição e velocidade (componentes X/Y).
-    - **Visualização de Dados:** Gera uma imagem estroboscópica, gráficos de trajetória/velocidade/aceleração e uma imagem opcional com vetores de velocidade.
+    - **Visualização de Dados:** Gera uma imagem estroboscópica, gráficos de trajetória, velocidade e aceleração (validação de forças), e uma imagem opcional com vetores de velocidade.
     - **Exportação de Resultados:** Permite o download da imagem estroboscópica e da tabela de dados completa em formato CSV, incluindo os parâmetros da análise.
     """)
-    st.markdown("#### Dicas para Melhores Resultados")
+    st.markdown("#### Dicas para Melhores Resultados (O Segredo está na Gravação!)")
     st.markdown("""
-    - **Câmera Estritamente Estática:** Para um resultado preciso, é fundamental que o vídeo tenha sido gravado com a **câmera completamente parada**. Qualquer movimento pode comprometer a análise.
-    - **Dados Precisos (Visão Lateral):** Para melhor acurácia dos dados, a gravação deve ser realizada em um **plano paralelo ao do movimento do objeto** (visão 2D, de lado). Evite gravar o objeto se movendo em direção ou para longe da câmera.
-    - **Bom Contraste:** Vídeos onde o objeto se destaca do fundo (cores diferentes, boa iluminação) produzem um rastreamento mais confiável.
-    - **Seleção Precisa:** Dedique um momento para ajustar o retângulo de seleção azul para que ele envolva o objeto de forma justa na sua posição inicial. Uma seleção precisa é a chave para um rastreamento bem-sucedido.
+    - **Câmera Estritamente Estática:** Para um resultado preciso, é fundamental que o vídeo tenha sido gravado com a **câmera completamente parada** (use um tripé). Qualquer vibração compromete a extração matemática da velocidade e aceleração.
+    - **Dados Precisos (Visão Lateral):** A gravação deve ser realizada em um plano estritamente perpendicular ao do movimento do objeto (visão 2D, de lado). Evite gravar o objeto se movendo em direção à lente para não gerar distorção de perspectiva.
+    - **A Importância do FPS (Taxa de Quadros):** O FPS é a sua "régua de tempo". Para fenômenos muito rápidos (como colisões ou a inversão de movimento de um pêndulo), grave o vídeo com um FPS alto (60 ou 120 FPS). Isso fornece mais amostras de dados ao algoritmo e evita que o evento ocorra "no ponto cego" entre dois quadros.
+    - **Cuidado com a Taxa de Quadros Variável (VFR):** Câmeras nativas de smartphones modernos frequentemente alteram a taxa de quadros durante o vídeo para lidar com a iluminação, gravando em VFR. O algoritmo assume uma taxa constante (CFR). Se o celular variar o FPS na gravação, você verá oscilações ou "lombadas" artificiais nos gráficos de aceleração. Se possível, utilize aplicativos de câmera de terceiros (como o *Open Camera*) para "travar" o FPS da gravação em um valor fixo.
+    - **Iluminação e Contraste:** O rastreamento de cor exige que o objeto se destaque do fundo e não passe por sombras profundas durante o movimento.
     """)
