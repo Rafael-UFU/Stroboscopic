@@ -301,7 +301,6 @@ if st.session_state.step == "frame_selection":
         
     if st.button("Confirmar Frame e Iniciar Configuração", type="primary"):
         st.session_state.initial_frame = frame
-        # --- CORREÇÃO AQUI: Salva o frame de início permanentemente ---
         st.session_state.start_frame_for_analysis = st.session_state.current_frame_idx
         st.session_state.step = "configuration"
         st.rerun()
@@ -346,7 +345,7 @@ if st.session_state.step == "configuration":
     if obj_w > 0 and obj_h > 0: 
         cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
     
-    # Exibe a imagem centralizada e grande
+    # Exibe a imagem centralizada e grande com botão de download
     img_col1, img_col2, img_col3 = st.columns([1, 4, 1])
     with img_col2:
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), use_container_width=True)
@@ -433,67 +432,49 @@ if st.session_state.step == "configuration":
                 else: 
                     st.error("A distância da calibração na tela não pode ser zero. Marque pontos distintos.")
 
-    with col_preview:
-        frame_para_preview = frame_com_grade.copy()
-        orig_y_opencv_preview, y1_opencv_preview, y2_opencv_preview = altura_total - orig_y_usuario, altura_total - y1_usuario, altura_total - y2_usuario
-        cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
-        cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv_preview), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
-        cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
-        cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
-        cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
-        obj_y_opencv_preview = altura_total - obj_y_usuario - obj_h
-        if obj_w > 0 and obj_h > 0: cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
-        
-        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), caption='Use a grade como referência para os parâmetros.')
-        
-        #_, buffer_preview = cv2.imencode('.PNG', cv2.cvtColor(frame_para_preview, cv2.COLOR_RGB2BGR))
-        _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
-        preview_bytes = BytesIO(buffer_preview).getvalue()
-        st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
+if st.session_state.results:
+    st.markdown("---")
+    st.markdown("## ✅ Resultados da Análise Principal")
+    img_estrob_bytes, df_final, figura_graficos = st.session_state.results
 
-    if st.session_state.results:
-        st.markdown("---")
-        st.markdown("## ✅ Resultados da Análise Principal")
-        img_estrob_bytes, df_final, figura_graficos = st.session_state.results
-
-        if img_estrob_bytes:
-            with st.expander("Resultados Detalhados", expanded=True):
-                st.markdown("### Imagem Estroboscópica"); st.image(img_estrob_bytes)
-                st.download_button("💾 Baixar Imagem (.png)", img_estrob_bytes, "imagem_estroboscopica.png", "image/png", use_container_width=True)
-                st.markdown("### Gráficos de Cinemática"); st.pyplot(figura_graficos)
-                st.markdown("### Tabela de Dados"); st.dataframe(df_final)
-                
-                csv_final_string = st.session_state.csv_header + df_final.to_csv(index=False)
-                st.download_button("💾 Baixar Dados (CSV)", csv_final_string, "dados_analise.csv", "text/csv", use_container_width=True)
-
-            st.markdown("---")
-            with st.expander("Análise Adicional: Vetores de Velocidade"):
-                st.info("Ajuste os parâmetros e clique para gerar uma imagem com os vetores de velocidade.")
-                cores_bgr = {"Vermelho": (0, 0, 255), "Azul": (255, 0, 0), "Amarelo": (0, 255, 255), "Ciano": (255, 255, 0), "Magenta": (255, 0, 255), "Verde": (0, 255, 0), "Branco": (255, 255, 255), "Laranja": (0, 165, 255)}
-                
-                vec_col1, vec_col2 = st.columns(2)
-                cor_nome = vec_col1.selectbox("Cor do Vetor", options=list(cores_bgr.keys()))
-                espessura_vetor = vec_col2.slider("Espessura do Vetor (px)", 1, 5, 2)
-                scale_vetor_col, max_len_col = st.columns(2)
-                scale_vetor = scale_vetor_col.slider("Escala do Vetor", 1, 200, 50, help="Multiplicador para o comprimento dos vetores.")
-                max_len_vetor = max_len_col.slider("Comprimento Máximo (px)", 10, 200, 100, help="Limite para o tamanho de um vetor na imagem.")
-                
-                if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
-                    imagem_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
-                    img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_final, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
-                    st.session_state.img_vetores = img_vetores_bytes
-                
-                if 'img_vetores' in st.session_state and st.session_state.img_vetores:
-                    st.image(st.session_state.img_vetores, caption="Imagem Estroboscópica com Vetores de Velocidade")
-                    st.download_button("💾 Baixar Imagem com Vetores (.png)", st.session_state.img_vetores, "imagem_com_vetores.png", "image/png", use_container_width=True)
+    if img_estrob_bytes:
+        with st.expander("Resultados Detalhados", expanded=True):
+            st.markdown("### Imagem Estroboscópica"); st.image(img_estrob_bytes)
+            st.download_button("💾 Baixar Imagem (.png)", img_estrob_bytes, "imagem_estroboscopica.png", "image/png", use_container_width=True)
+            st.markdown("### Gráficos de Cinemática"); st.pyplot(figura_graficos)
+            st.markdown("### Tabela de Dados"); st.dataframe(df_final)
             
-            st.markdown("---")
-            if st.button("🔄 Analisar outro vídeo", key="final_reset"):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun()
-        else:
-            st.error("Falha na análise. Nenhum ponto de dados foi gerado. Verifique se o objeto se move o suficiente para o 'Espaçamento na Imagem'.")
+            csv_final_string = st.session_state.csv_header + df_final.to_csv(index=False)
+            st.download_button("💾 Baixar Dados (CSV)", csv_final_string, "dados_analise.csv", "text/csv", use_container_width=True)
+
+        st.markdown("---")
+        with st.expander("Análise Adicional: Vetores de Velocidade"):
+            st.info("Ajuste os parâmetros e clique para gerar uma imagem com os vetores de velocidade.")
+            cores_bgr = {"Vermelho": (0, 0, 255), "Azul": (255, 0, 0), "Amarelo": (0, 255, 255), "Ciano": (255, 255, 0), "Magenta": (255, 0, 255), "Verde": (0, 255, 0), "Branco": (255, 255, 255), "Laranja": (0, 165, 255)}
+            
+            vec_col1, vec_col2 = st.columns(2)
+            cor_nome = vec_col1.selectbox("Cor do Vetor", options=list(cores_bgr.keys()))
+            espessura_vetor = vec_col2.slider("Espessura do Vetor (px)", 1, 5, 2)
+            scale_vetor_col, max_len_col = st.columns(2)
+            scale_vetor = scale_vetor_col.slider("Escala do Vetor", 1, 200, 50, help="Multiplicador para o comprimento dos vetores.")
+            max_len_vetor = max_len_col.slider("Comprimento Máximo (px)", 10, 200, 100, help="Limite para o tamanho de um vetor na imagem.")
+            
+            if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
+                imagem_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
+                img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_final, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
+                st.session_state.img_vetores = img_vetores_bytes
+            
+            if 'img_vetores' in st.session_state and st.session_state.img_vetores:
+                st.image(st.session_state.img_vetores, caption="Imagem Estroboscópica com Vetores de Velocidade")
+                st.download_button("💾 Baixar Imagem com Vetores (.png)", st.session_state.img_vetores, "imagem_com_vetores.png", "image/png", use_container_width=True)
+        
+        st.markdown("---")
+        if st.button("🔄 Analisar outro vídeo", key="final_reset"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+    else:
+        st.error("Falha na análise. Nenhum ponto de dados foi gerado. Verifique se o objeto se move o suficiente para o 'Espaçamento na Imagem'.")
 
 # --- Rodapé Informativo ---
 st.markdown("---")
@@ -505,7 +486,7 @@ with footer_expander:
     - **Calibração de Espaço:** Defina uma origem (0,0) e uma escala de referência (u.m./pixel) para obter dados em unidades de medida reais.
     - **Rastreamento de Objeto:** Acompanha o objeto selecionado ao longo do vídeo.
     - **Análise Cinemática:** Calcula e exibe dados de posição e velocidade (componentes X/Y).
-    - **Visualização de Dados:** Gera uma imagem estroboscópica, gráficos de trajetória/velocidade e uma imagem opcional com vetores de velocidade.
+    - **Visualização de Dados:** Gera uma imagem estroboscópica, gráficos de trajetória/velocidade/aceleração e uma imagem opcional com vetores de velocidade.
     - **Exportação de Resultados:** Permite o download da imagem estroboscópica e da tabela de dados completa em formato CSV, incluindo os parâmetros da análise.
     """)
     st.markdown("#### Dicas para Melhores Resultados")
