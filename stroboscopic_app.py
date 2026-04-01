@@ -387,8 +387,24 @@ if st.session_state.step == "configuration":
         window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
         poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
         
-        with st.expander("❓ Ajuda com Filtros"):
-            st.markdown("Ajuste a janela até que o gráfico de aceleração faça sentido físico. Janelas muito grandes arredondam picos rápidos. A ordem 2 é ideal para mecânica clássica.")
+        # with st.expander("❓ Ajuda com Filtros"):
+        #    st.markdown("Ajuste a janela até que o gráfico de aceleração faça sentido físico. Janelas muito grandes arredondam picos rápidos. A ordem 2 é ideal para mecânica clássica.")
+        with st.expander("❓ Como escolher os melhores parâmetros?"):
+            st.markdown("""
+            O Filtro de Savitzky-Golay remove o ruído do vídeo ajustando polinômios locais à trajetória.
+            
+            **A Regra de Ouro (Tamanho da Janela):**
+            * **Movimentos Suaves (Queda livre, pêndulo longo):** Janelas maiores (11 a 19) geram curvas limpas e contínuas.
+            * **Eventos Rápidos (Colisões, quiques):** Janelas menores (5 a 9) preservam picos reais de velocidade que seriam "achatados" por janelas grandes.
+            
+            **O "Teste de Sanidade" (Olhe para a Aceleração!):**
+            A melhor forma de calibrar o filtro é observando o gráfico da aceleração. Em uma queda livre, a aceleração teórica é uma linha reta (~9.8 m/s²). 
+            * Se a linha estiver oscilando violentamente como um eletrocardiograma, a janela está **muito pequena**. 
+            * Se a linha fizer curvas suaves como uma onda, a janela está **muito grande** (super-suavização).
+            
+            **Ordem do Polinômio:**
+            A Ordem **2** é ideal para movimentos sob aceleração constante (como a gravidade), pois a equação horária da posição é quadrática.
+            """)
 
     # ---------------------------------------------------------
     # PARTE 3: BOTÃO DE AÇÃO PRINCIPAL
