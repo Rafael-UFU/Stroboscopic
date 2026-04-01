@@ -49,37 +49,64 @@ st.markdown("""
 # --- FUNÇÕES DE PLOTAGEM E PROCESSAMENTO ---
 
 def plotar_graficos(df):
-    """Gera gráficos de velocidade e aceleração usando Matplotlib."""
-    # Alterado de (2, 1) para (3, 1) e ajustado o figsize para acomodar o terceiro gráfico
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(6, 10), sharex=True)
-    plt.subplots_adjust(hspace=0.4) # Aumentado o espaçamento vertical entre os gráficos
-    
-    # Gráfico 1: Velocidade X
-    ax1.plot(df['tempo_s'], df['vx_um_s'], marker='o', linestyle='-', markersize=4)
-    ax1.set_title("Velocidade Horizontal (Vx)")
-    ax1.set_ylabel("Velocidade (u.m./s)")
-    ax1.grid(True)
-    
-    # Gráfico 2: Velocidade Y
-    ax2.plot(df['tempo_s'], df['vy_um_s'], marker='o', linestyle='-', markersize=4)
-    ax2.set_title("Velocidade Vertical (Vy)")
-    ax2.set_ylabel("Velocidade (u.m./s)")
-    ax2.grid(True)
-    
-    # --- NOVO BLOCO: Gráfico 3: Aceleração Total ---
-    ax3.plot(df['tempo_s'], df['acel_total_um_s2'], marker='^', linestyle='-', markersize=4) # Marcador diferente
-    ax3.set_title("Magnitude da Aceleração Total")
-    ax3.set_ylabel("Aceleração (u.m./s²)")
-    ax3.set_xlabel("Tempo (s)") # O eixo X só é rotulado no gráfico inferior
-    ax3.grid(True)
-    # -----------------------------------------------
-    
-    # Adicionar uma linha de referência para g (~9.8) se a aceleração estiver próxima
-    # (Opcional, mas muito didático para queda livre)
-    promedio_acel = df['acel_total_um_s2'].mean()
-    if 8 < promedio_acel < 11:
-        ax3.axhline(y=promedio_acel, linestyle='--', color='gray', alpha=0.5, label='Acel. Média')
-        ax3.legend()
+    plt.style.use('seaborn-v0_8-whitegrid')
+    # Aumentamos a altura da figura de 12 para 18 para acomodar a terceira linha com folga
+    fig = plt.figure(figsize=(15, 18)) 
+    gs = gridspec.GridSpec(3, 2, figure=fig)
+    fig.tight_layout(pad=6.0)
+
+    # --- LINHA 1: Gráfico de Trajetória (Ocupa as duas colunas) ---
+    ax1 = fig.add_subplot(gs[0, :])
+    x, y = df['pos_x_um'].to_numpy(), df['pos_y_um'].to_numpy()
+    ax1.scatter(x, y, label='Pontos Observados', color='blue', alpha=0.6, s=10)
+    if len(x) > 3:
+        try:
+            sorted_indices = np.argsort(x)
+            x_s, y_s = x[sorted_indices], y[sorted_indices]
+            X_Y_Spline = make_interp_spline(x_s, y_s)
+            X_, Y_ = np.linspace(x_s.min(), x_s.max(), 500), X_Y_Spline(np.linspace(x_s.min(), x_s.max(), 500))
+            ax1.plot(X_, Y_, label='Curva de Trajetória (Spline)', color='red', linewidth=2)
+        except:
+            ax1.plot(x, y, label='Linha de Trajetória', color='red', linewidth=2, alpha=0.8)
+    ax1.set_title('Gráfico de Trajetória', fontsize=16)
+    ax1.set_xlabel('Posição X (u.m.)')
+    ax1.set_ylabel('Posição Y (u.m.)')
+    ax1.legend()
+    ax1.set_aspect('equal', adjustable='box')
+
+    # --- LINHA 2: Gráficos de Velocidade ---
+    # Velocidade em X (Esquerda)
+    ax2 = fig.add_subplot(gs[1, 0])
+    ax2.plot(df['tempo_s'], df['vx_um_s'], label='Velocidade em X', color='green', marker='o', linestyle='--')
+    ax2.set_title('Velocidade na Direção X vs. Tempo', fontsize=16)
+    ax2.set_xlabel('Tempo (s)')
+    ax2.set_ylabel('Velocidade (u.m./s)')
+    ax2.legend()
+
+    # Velocidade em Y (Direita)
+    ax3 = fig.add_subplot(gs[1, 1])
+    ax3.plot(df['tempo_s'], df['vy_um_s'], label='Velocidade em Y', color='orange', marker='o', linestyle='--')
+    ax3.set_title('Velocidade na Direção Y vs. Tempo', fontsize=16)
+    ax3.set_xlabel('Tempo (s)')
+    ax3.set_ylabel('Velocidade (u.m./s)')
+    ax3.legend()
+
+    # --- LINHA 3: Gráficos de Aceleração ---
+    # Aceleração em X (Esquerda)
+    ax4 = fig.add_subplot(gs[2, 0])
+    ax4.plot(df['tempo_s'], df['ax_um_s2'], label='Aceleração em X', color='purple', marker='^', linestyle='-')
+    ax4.set_title('Aceleração na Direção X vs. Tempo', fontsize=16)
+    ax4.set_xlabel('Tempo (s)')
+    ax4.set_ylabel('Aceleração (u.m./s²)')
+    ax4.legend()
+
+    # Aceleração em Y (Direita)
+    ax5 = fig.add_subplot(gs[2, 1])
+    ax5.plot(df['tempo_s'], df['ay_um_s2'], label='Aceleração em Y', color='brown', marker='^', linestyle='-')
+    ax5.set_title('Aceleração na Direção Y vs. Tempo', fontsize=16)
+    ax5.set_xlabel('Tempo (s)')
+    ax5.set_ylabel('Aceleração (u.m./s²)')
+    ax5.legend()
 
     return fig
 
@@ -155,28 +182,26 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     if len(df_carimbos) > window_size:
         dt = 1.0 / fps
         
-        # 1. Posição Suavizada (deriv=0)
+        # Posição
         df_carimbos['pos_x_um'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=0)
         df_carimbos['pos_y_um'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=0)
         
-        # 2. Velocidade (deriv=1)
+        # Velocidade (Vx e Vy)
         df_carimbos['vx_um_s'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
         df_carimbos['vy_um_s'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
         
-        # 3. Componentes da Aceleração (deriv=2)
-        ax = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=2, delta=dt)
-        ay = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=2, delta=dt)
-        
-        # 4. Magnitude Total da Aceleração (Resultante)
-        df_carimbos['acel_total_um_s2'] = np.sqrt(ax**2 + ay**2) # <--- ADICIONE ESTA LINHA
+        # Aceleração (Ax e Ay separadas)
+        df_carimbos['ax_um_s2'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=2, delta=dt)
+        df_carimbos['ay_um_s2'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=2, delta=dt)
         
     else:
         delta_t = df_carimbos['tempo_s'].diff()
         df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
         df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / delta_t
         
-        # Fallback simples para aceleração por diferenças finitas
-        df_carimbos['acel_total_um_s2'] = df_carimbos['vy_um_s'].diff() / delta_t # <--- ADICIONE ESTA LINHA
+        # Fallback para aceleração por diferenças finitas separada em componentes
+        df_carimbos['ax_um_s2'] = df_carimbos['vx_um_s'].diff() / delta_t
+        df_carimbos['ay_um_s2'] = df_carimbos['vy_um_s'].diff() / delta_t
     
     df_final = df_carimbos.fillna(0)
     
