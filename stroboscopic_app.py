@@ -536,24 +536,6 @@ if st.session_state.results:
 
 # --- Rodapé Informativo ---
 st.markdown("---")
-with st.expander("💡 Informações Adicionais (Funcionalidades e Dicas)"):
-    st.markdown("#### Funcionalidades e Inovações Técnicas")
-    st.markdown("""
-    - **Rastreio CSRT:** Utiliza o algoritmo *Discriminative Correlation Filter* para rastreamento robusto, resistente a falhas de textura e iluminação.
-    - **Homografia (Correção de Perspectiva):** Permite corrigir vídeos gravados fora de esquadro antes do rastreamento.
-    - **Exportação de Vídeo:** Comprova a validade do experimento permitindo o download do vídeo com o *bounding box* anexado a cada quadro.
-    - **Ajuste de Curvas (Trendlines):** Permite extrair a velocidade ou aceleração constante teórica validando as leis da cinemática clássica (com cálculo rigoroso de $R^2$).
-    - **Suavização Savitzky-Golay:** Derivação polinomial avançada acoplada que limpa ruídos de quantização de pixels e devolve campos de aceleração fisicamente coerentes.
-    """)
-    st.markdown("#### Dicas para Melhores Resultados na Gravação")
-    st.markdown("""
-    - **Câmera Estritamente Estática:** Qualquer vibração destrói a extração matemática das derivadas. Use um tripé.
-    - **A Importância do FPS (Taxa de Quadros):** Para fenômenos muito rápidos, grave com um FPS alto (60 ou 120 FPS). O FPS é a "régua de tempo" da aplicação.
-    - **Taxa de Quadros Variável (VFR):** Evite a câmera padrão do celular se ela variar o FPS durante a gravação. O algoritmo assume uma taxa constante. Variações geram ruído na aceleração.
-    """)
-
-# --- Rodapé Informativo ---
-st.markdown("---")
 footer_expander = st.expander("💡 Informações Adicionais (Funcionalidades e Dicas)", expanded=False)
 with footer_expander:
     st.markdown("#### Funcionalidades e Inovações Técnicas")
@@ -564,10 +546,11 @@ with footer_expander:
     - **Análise Cinemática:** Calcula e exibe dados de posição e velocidade (componentes X/Y).
     - **Visualização de Dados:** Gera uma imagem estroboscópica, gráficos de trajetória, velocidade e aceleração (validação de forças), e uma imagem opcional com vetores de velocidade.
     - **Exportação de Resultados:** Permite o download da imagem estroboscópica e da tabela de dados completa em formato CSV, incluindo os parâmetros da análise.
-    - **Rastreio CSRT:** Utiliza o algoritmo *Discriminative Correlation Filter* para rastreamento superior e resistente a falhas de iluminação.
+    - **Rastreio CSRT:** Utiliza o algoritmo *Discriminative Correlation Filter* para rastreamento robusto, resistente a falhas de textura e iluminação.
+    - **Homografia (Correção de Perspectiva):** Permite corrigir vídeos gravados fora de esquadro antes do rastreamento.
     - **Exportação de Vídeo:** Comprova a validade do experimento permitindo o download do vídeo com o *bounding box* anexado a cada quadro.
-    - **Ajuste de Curvas (Trendlines):** Permite extrair a velocidade ou aceleração constante teórica validando as leis da cinemática clássica (com cálculo de $R^2$).
-    - **Suavização Savitzky-Golay:** Derivação polinomial avançada que limpa ruídos de quantização de pixels.
+    - **Ajuste de Curvas (Trendlines):** Permite extrair a velocidade ou aceleração constante teórica validando as leis da cinemática clássica (com cálculo rigoroso de $R^2$).
+    - **Suavização Savitzky-Golay:** Derivação polinomial avançada acoplada que limpa ruídos de quantização de pixels e devolve campos de aceleração fisicamente coerentes.
     """)
     st.markdown("#### Dicas para Melhores Resultados (O Segredo está na Gravação!)")
     st.markdown("""
