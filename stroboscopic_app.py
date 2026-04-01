@@ -344,6 +344,17 @@ if st.session_state.step == "configuration":
     
     matriz_H = None
     dim_H = None
+    
+    # Prevenção de erro: Garante que a imagem está na memória antes de copiar
+    if 'raw_initial_frame' not in st.session_state:
+        if 'initial_frame' in st.session_state:
+            # Puxa da versão antiga se o usuário estiver no meio do reload
+            st.session_state.raw_initial_frame = st.session_state.initial_frame
+        else:
+            # Trava a execução e avisa o usuário caso a memória esteja vazia
+            st.warning("Sessão expirada ou página recarregada. Por favor, volte ao Passo 1 e carregue o vídeo novamente.")
+            st.stop()
+            
     frame_trabalho = st.session_state.raw_initial_frame.copy()
     
     if usar_homografia:
