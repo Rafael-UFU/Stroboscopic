@@ -502,7 +502,7 @@ if st.session_state.results:
             csv_final_string = st.session_state.csv_header + df_final.to_csv(index=False)
             st.download_button("💾 Baixar Tabela de Dados (.csv)", csv_final_string, "dados_analise.csv", "text/csv", use_container_width=True)
             
-        with st.expander("📈 Ajuste de Curvas Teóricas (Modelos Físicos)"):
+        with st.expander("📈 Ajuste de Curvas Teóricas (Modelos Físicos)", expanded=True):          
             st.info("Compare os dados reais extraídos pelo vídeo com as equações teóricas da física clássica.")
             aj_col1, aj_col2 = st.columns(2)
             eixo_ajuste = aj_col1.selectbox("Eixo de Análise", ["Posição Y", "Posição X"])
@@ -530,7 +530,7 @@ if st.session_state.results:
             st.pyplot(fig_ajuste)
 
         # --- RESTAURADO: Vetores de Velocidade ---
-        with st.expander("🏹 Análise Adicional: Vetores de Velocidade"):
+        with st.expander("🏹 Análise Adicional: Vetores de Velocidade", expanded=True):            
             st.info("Ajuste os parâmetros e clique para gerar uma imagem com os vetores direcionais.")
             cores_bgr = {"Vermelho": (0, 0, 255), "Azul": (255, 0, 0), "Amarelo": (0, 255, 255), "Ciano": (255, 255, 0), "Magenta": (255, 0, 255), "Verde": (0, 255, 0), "Branco": (255, 255, 255), "Laranja": (0, 165, 255)}
             
