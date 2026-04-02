@@ -436,20 +436,33 @@ if st.session_state.step == "configuration":
         cv2.rectangle(frame_para_preview, (int(st.session_state.obj_x), obj_y_cv), (int(st.session_state.obj_x + st.session_state.obj_w), int(obj_y_cv + st.session_state.obj_h)), (255, 0, 0), 2)
 
     # 4. RENDERIZAÇÃO DA IMAGEM E CAPTURA DE CLIQUE
-    img_col1, img_col2, img_col3 = st.columns([1, 4, 1])
+    img_col1, img_col2, img_col3 = st.columns([1, 5, 1])
     with img_col2:
-        imagem_rgb = cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB)
+        # --- BLINDAGEM DE ESCALA (A SOLUÇÃO PARA O DESVIO DO CLIQUE) ---
+        larg_orig = frame_para_preview.shape[1]
+        alt_orig = frame_para_preview.shape[0]
         
-        # O parâmetro use_column_width=True corrige os erros de escala das coordenadas!
-        value = streamlit_image_coordinates(imagem_rgb, key="image_click", use_column_width=True)
+        LARGURA_TELA = 800 # Forçamos a imagem a ter no máximo 800px na tela
+        escala = larg_orig / LARGURA_TELA if larg_orig > LARGURA_TELA else 1.0
+        
+        if escala > 1.0:
+            frame_exibicao = cv2.resize(frame_para_preview, (LARGURA_TELA, int(alt_orig / escala)))
+        else:
+            frame_exibicao = frame_para_preview
+
+        imagem_rgb = cv2.cvtColor(frame_exibicao, cv2.COLOR_BGR2RGB)
+        
+        # Removemos o "use_column_width" para evitar distorções do navegador
+        value = streamlit_image_coordinates(imagem_rgb, key="image_click")
 
         if value is not None:
             if st.session_state.get('last_click') != value:
                 st.session_state.last_click = value
 
-                x_click = int(value["x"])
-                y_click = int(value["y"])
-                y_inv_click = int(altura_total - y_click)
+                # A Mágica: Multiplica a coordenada clicada na tela pela escala para achar o pixel real!
+                x_click = int(value["x"] * escala)
+                y_click = int(value["y"] * escala)
+                y_inv_click = int(altura_total - y_click) # Inverte o Y para o referencial da física
 
                 if ferramenta_ativa == "📍 Origem (0,0)":
                     st.session_state.orig_x = x_click; st.session_state.orig_y = y_inv_click; st.rerun()
