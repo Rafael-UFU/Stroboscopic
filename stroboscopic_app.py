@@ -409,12 +409,27 @@ if st.session_state.step == "configuration":
     y2_opencv_preview = altura_total - y2_usuario
     obj_y_opencv_preview = altura_total - obj_y_usuario - obj_h
 
+    #cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
+    #cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
+    #cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
+    #cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
+    #if obj_w > 0 and obj_h > 0: 
+    #    cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
+
+    # 1. Origem: Desenhamos sempre (serve como âncora visual para o aluno saber onde está o 0,0)
     cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
-    cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
-    cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
-    cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
-    if obj_w > 0 and obj_h > 0: 
-        cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
+    cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv_preview), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+
+    # 2. Calibração: Só desenha se o usuário tiver movido os pontos para fora do (0,0) padrão
+    if (x1 != 0 or y1_usuario != 0) or (x2 != 0 or y2_usuario != 0):
+        cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
+        cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
+        cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
+
+    # 3. Objeto: Só desenha o retângulo se o usuário tiver marcado o canto dele
+    if (obj_x != 0 or obj_y_usuario != 0):
+        if obj_w > 0 and obj_h > 0: 
+            cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
     
     st.markdown("### 🖱️ Calibração Interativa")
     st.info("Selecione um ponto abaixo e clique na imagem para definir sua coordenada, ou digite manualmente nas caixas.")
