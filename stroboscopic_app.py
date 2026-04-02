@@ -149,7 +149,7 @@ def calcular_ajuste_teorico(t, y, grau):
     r2 = 1 - (ss_res / ss_tot)
     return p, y_pred, r2, coefs
 
-def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2, matriz_homografia=None, dimensao_homografia=None):
+def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2, matriz_homografia=None, dimensao_homografia=None):
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_bytes)
     video_path = tfile.name
@@ -178,7 +178,10 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     contador_frames_processados = 0
     while True:
         frame_atual_idx = start_frame_idx + contador_frames_processados
-        if frame_atual_idx >= total_frames: break
+        
+        # --- A GRANDE MUDANÇA: O LAÇO PARA NO FRAME FINAL ---
+        if frame_atual_idx > end_frame_idx or frame_atual_idx >= total_frames: 
+            break
 
         success, frame_atual = cap.read()
         if not success: break
@@ -187,7 +190,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
         if matriz_homografia is not None:
             frame_atual = cv2.warpPerspective(frame_atual, matriz_homografia, dimensao_homografia)
         
-        status_text_element.text(f"Processando e Rastreando frame {frame_atual_idx}/{total_frames-1}...")
+        status_text_element.text(f"Processando e Rastreando frame {frame_atual_idx}/{end_frame_idx}...")
         
         success_track, bbox_atual = tracker.update(frame_atual)
         frame_video_out = frame_atual.copy() # Cópia para o vídeo exportado
@@ -202,15 +205,13 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
             cv2.rectangle(frame_video_out, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.circle(frame_video_out, (int(centro_atual_px[0]), int(centro_atual_px[1])), 4, (0, 0, 255), -1)
             
-            # --- A GRANDE MUDANÇA: SALVA OS DADOS EM TODOS OS FRAMES ---
-            # Independentemente do espaçamento, a matemática recebe a máxima resolução
+            # Salva os dados em todos os frames
             carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
             
-            # --- A LÓGICA DO CARIMBO E DA FLAG ---
-            is_stamp = False # Por padrão, não é carimbo
+            is_stamp = False
             
             if dist_pixels * scale_factor >= fator_distancia:
-                is_stamp = True # Ativa a flag se a distância foi atingida
+                is_stamp = True 
                 x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
                 regiao = frame_atual[y_s:y_e, x_s:x_e]
                 
@@ -219,10 +220,8 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
                 
                 posicao_ultimo_carimbo_px = centro_atual_px
 
-            # Salva TODOS os frames para a matemática, incluindo a flag 'is_stamp'
-            carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1], is_stamp])
+            carimbos_data[-1].append(is_stamp) # Adiciona a flag no último elemento
 
-        # Grava o frame no arquivo de vídeo de saída
         out_video.write(frame_video_out)
         contador_frames_processados += 1
     
@@ -312,44 +311,67 @@ if st.session_state.step == "upload":
         st.rerun()
 
 if st.session_state.step == "frame_selection":
-    st.markdown("## Passo 2: Seleção do Frame Inicial")
-    st.info("Navegue pelos frames para escolher o momento exato em que a análise deve começar.")
+    st.markdown("## Passo 2: Seleção do Intervalo de Análise")
+    st.info("Defina o momento exato de início e fim do movimento. Use a barra para navegar e os botões para marcar os limites.")
 
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(st.session_state.video_bytes)
     cap = cv2.VideoCapture(tfile.name)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    if 'current_frame_idx' not in st.session_state: 
-        st.session_state.current_frame_idx = 0
+    if 'preview_idx' not in st.session_state: st.session_state.preview_idx = 0
+    if 'start_idx' not in st.session_state: st.session_state.start_idx = 0
+    if 'end_idx' not in st.session_state: st.session_state.end_idx = total_frames - 1
 
-    st.markdown("##### Controles de Navegação")
-    nav_cols = st.columns([1, 1, 1])
+    # --- BARRA DE NAVEGAÇÃO RÁPIDA ---
+    slider_prev = st.slider("Linha do Tempo do Vídeo (Arraste para visualizar)", 0, total_frames - 1, st.session_state.preview_idx)
+    if slider_prev != st.session_state.preview_idx:
+        st.session_state.preview_idx = slider_prev
+        st.rerun()
 
-    with nav_cols[0]:
-        if st.button("<< Frame Anterior"):
-            st.session_state.current_frame_idx = max(0, st.session_state.current_frame_idx - 1)
-    with nav_cols[2]:
-        if st.button("Próximo Frame >>"):
-            st.session_state.current_frame_idx = min(total_frames - 1, st.session_state.current_frame_idx + 1)
-    with nav_cols[1]:
-        input_cols = st.columns([1, 2, 1])
-        with input_cols[1]:
-            st.number_input("Ir para o Frame:", min_value=0, max_value=total_frames - 1, step=1, key="current_frame_idx", label_visibility="visible")
+    nav_cols = st.columns([1, 1, 1, 1])
+    if nav_cols[0].button("<< -5 Frames", use_container_width=True): st.session_state.preview_idx = max(0, st.session_state.preview_idx - 5); st.rerun()
+    if nav_cols[1].button("< Anterior", use_container_width=True): st.session_state.preview_idx = max(0, st.session_state.preview_idx - 1); st.rerun()
+    if nav_cols[2].button("Próximo >", use_container_width=True): st.session_state.preview_idx = min(total_frames-1, st.session_state.preview_idx + 1); st.rerun()
+    if nav_cols[3].button("+5 Frames >>", use_container_width=True): st.session_state.preview_idx = min(total_frames-1, st.session_state.preview_idx + 5); st.rerun()
 
-    cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame_idx)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.preview_idx)
     success, frame = cap.read()
-    if success: 
+    if success:
         img_cols = st.columns([1, 8, 1])
         with img_cols[1]:
-            st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Exibindo Frame: {st.session_state.current_frame_idx} / {total_frames-1}")
+            st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=f"Visualizando Frame: {st.session_state.preview_idx} / {total_frames-1}")
+
+    # --- BOTÕES DE MARCAÇÃO DE CORTE ---
+    st.markdown("### ✂️ Definir Limites de Corte")
+    lim_col1, lim_col2 = st.columns(2)
+    with lim_col1:
+        st.markdown(f"**Frame Inicial:** `{st.session_state.start_idx}`")
+        if st.button("📍 Marcar Preview como INICIAL", use_container_width=True):
+            st.session_state.start_idx = st.session_state.preview_idx
+            if st.session_state.start_idx > st.session_state.end_idx:
+                st.session_state.end_idx = st.session_state.start_idx # Proteção contra limites invertidos
+            st.rerun()
+    with lim_col2:
+        st.markdown(f"**Frame Final:** `{st.session_state.end_idx}`")
+        if st.button("🛑 Marcar Preview como FINAL", use_container_width=True):
+            st.session_state.end_idx = st.session_state.preview_idx
+            if st.session_state.end_idx < st.session_state.start_idx:
+                st.session_state.start_idx = st.session_state.end_idx
+            st.rerun()
+
+    st.markdown("---")
+    if st.button("✅ Confirmar Intervalo e Iniciar Configuração", type="primary", use_container_width=True):
+        # A imagem base que vai para configuração TEM que ser o Frame Inicial selecionado!
+        cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.start_idx)
+        _, frame_inicial_real = cap.read()
         
-    if st.button("Confirmar Frame e Iniciar Configuração", type="primary"):
-        st.session_state.raw_initial_frame = frame
-        st.session_state.start_frame_for_analysis = st.session_state.current_frame_idx
+        st.session_state.raw_initial_frame = frame_inicial_real
+        st.session_state.start_frame_for_analysis = st.session_state.start_idx
+        st.session_state.end_frame_for_analysis = st.session_state.end_idx
         st.session_state.step = "configuration"
         st.rerun()
-    
+
     cap.release(), os.remove(tfile.name)
 
 if st.session_state.step == "configuration":
@@ -578,10 +600,11 @@ if st.session_state.step == "configuration":
                     scale_factor = distancia_real / length_pixels
                     obj_y_cv = int(altura_total - st.session_state.obj_y - st.session_state.obj_h)
                     bbox_opencv = (int(st.session_state.obj_x), obj_y_cv, int(st.session_state.obj_w), int(st.session_state.obj_h))
-                    
+             
                     header_comentarios = (
                         f"# Análise de Movimento - {pd.Timestamp.now()}\n"
                         f"# Frame Inicial: {st.session_state.start_frame_for_analysis}\n"
+                        f"# Frame Final: {st.session_state.end_frame_for_analysis}\n"
                         f"# Origem (pixels): {origin_coords}\n"
                         f"# Fator de Escala: {scale_factor:.6f} u.m./pixel\n"
                         f"# --- \n"
@@ -589,7 +612,9 @@ if st.session_state.step == "configuration":
                     st.session_state.csv_header = header_comentarios
                     
                     st.session_state.results = processar_video(
-                        st.session_state.video_bytes, frame_ativo, st.session_state.start_frame_for_analysis, 
+                        st.session_state.video_bytes, frame_ativo, 
+                        st.session_state.start_frame_for_analysis, 
+                        st.session_state.end_frame_for_analysis, 
                         bbox_opencv, fator_dist, scale_factor, origin_coords, status_text, window_size, poly_order,
                         st.session_state.get('matriz_H', None), st.session_state.get('dim_H', None)
                     )
