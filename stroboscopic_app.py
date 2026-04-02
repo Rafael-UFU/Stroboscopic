@@ -402,6 +402,13 @@ if st.session_state.step == "configuration":
     img_col1, img_col2, img_col3 = st.columns([1, 4, 1])
     with img_col2:
         st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), use_container_width=True)
+        
+        # --- RESTAURADO: Botão de Download da Imagem de Configuração ---
+        _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
+        preview_bytes = BytesIO(buffer_preview).getvalue()
+        st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
+        # ---------------------------------------------------------------
+        
     st.markdown("---")
     
     col1, col2, col3 = st.columns(3)
