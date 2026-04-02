@@ -503,7 +503,7 @@ if st.session_state.step == "configuration":
         ny2 = p2.number_input("Ponto 2 - Y", value=int(st.session_state.y2), step=10)
         if ny2 != st.session_state.y2: st.session_state.y2 = ny2; st.rerun()
         
-        distancia_real = st.number_input("Distância real (u.m.)", min_value=0.01, format="%.4f", key="dist_real")
+        distancia_real = st.number_input("Distância real (u.m.)", min_value=0.01, value=1.0, format="%.4f", key="dist_real")
 
     with col2:
         st.markdown("#### 2. Rastreamento do Objeto")
