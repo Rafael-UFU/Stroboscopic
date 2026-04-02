@@ -150,77 +150,52 @@ def calcular_ajuste_teorico(t, y, grau):
     return p, y_pred, r2, coefs
 
 def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2, matriz_homografia=None, dimensao_homografia=None):
-    tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    tfile.write(video_bytes)
-    video_path = tfile.name
+    # ... (código de inicialização inicial igual) ...
 
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx)
-
-    # Tracker CSRT é robusto a mudanças de textura e iluminação
-    tracker = cv2.TrackerCSRT_create()
-    tracker.init(initial_frame, bbox_coords_opencv)
-
-    imagem_estroboscopica = initial_frame.copy()
-    altura_frame, largura_frame, _ = initial_frame.shape
-    
-    # Configuração do Exportador de Vídeo
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    temp_video_out = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    out_video = cv2.VideoWriter(temp_video_out.name, fourcc, fps, (largura_frame, altura_frame))
-    
     carimbos_data = []
+    # Inicializamos a posição de referência, mas NÃO adicionamos à lista ainda
     posicao_ultimo_carimbo_px = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
-    carimbos_data.append([start_frame_idx, posicao_ultimo_carimbo_px[0], posicao_ultimo_carimbo_px[1], True])
 
     contador_frames_processados = 0
     while True:
         frame_atual_idx = start_frame_idx + contador_frames_processados
         
-        # --- A GRANDE MUDANÇA: O LAÇO PARA NO FRAME FINAL ---
         if frame_atual_idx > end_frame_idx or frame_atual_idx >= total_frames: 
             break
 
         success, frame_atual = cap.read()
         if not success: break
         
-        # Se a homografia estiver ativa, corrige a perspectiva do frame do vídeo antes de rastrear
         if matriz_homografia is not None:
             frame_atual = cv2.warpPerspective(frame_atual, matriz_homografia, dimensao_homografia)
         
-        status_text_element.text(f"Processando e Rastreando frame {frame_atual_idx}/{end_frame_idx}...")
+        status_text_element.text(f"Processando frame {frame_atual_idx}/{end_frame_idx}...")
         
         success_track, bbox_atual = tracker.update(frame_atual)
-        frame_video_out = frame_atual.copy() # Cópia para o vídeo exportado
+        frame_video_out = frame_atual.copy()
         
         if success_track:
             centro_atual_px = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
             dist_pixels = np.sqrt((centro_atual_px[0] - posicao_ultimo_carimbo_px[0])**2 + (centro_atual_px[1] - posicao_ultimo_carimbo_px[1])**2)
             
             (x, y, w, h) = [int(v) for v in bbox_atual]
-            
-            # Desenha o Bounding Box no frame que será exportado para vídeo
             cv2.rectangle(frame_video_out, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.circle(frame_video_out, (int(centro_atual_px[0]), int(centro_atual_px[1])), 4, (0, 0, 255), -1)
             
-            # Salva os dados em todos os frames
+            # Salva o dado matemático de TODO frame
             carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
             
+            # Lógica do Carimbo Estético
+            # O primeiro frame (contador == 0) SEMPRE será um carimbo
             is_stamp = False
-            
-            if dist_pixels * scale_factor >= fator_distancia:
+            if contador_frames_processados == 0 or (dist_pixels * scale_factor >= fator_distancia):
                 is_stamp = True 
                 x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
                 regiao = frame_atual[y_s:y_e, x_s:x_e]
-                
                 if regiao.size > 0:
                     imagem_estroboscopica[y_s:y_e, x_s:x_e] = regiao
-                
                 posicao_ultimo_carimbo_px = centro_atual_px
 
-            carimbos_data[-1].append(is_stamp) # Adiciona a flag no último elemento
+            carimbos_data[-1].append(is_stamp)
 
         out_video.write(frame_video_out)
         contador_frames_processados += 1
