@@ -9,6 +9,7 @@ from scipy.interpolate import make_interp_spline
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 # --- ESTILO DOS BOTÕES (CSS) ---
 st.markdown("""
