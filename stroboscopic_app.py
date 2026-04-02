@@ -172,7 +172,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     
     carimbos_data = []
     posicao_ultimo_carimbo_px = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
-    carimbos_data.append([start_frame_idx, posicao_ultimo_carimbo_px[0], posicao_ultimo_carimbo_px[1]])
+    carimbos_data.append([start_frame_idx, posicao_ultimo_carimbo_px[0], posicao_ultimo_carimbo_px[1], True])
 
     contador_frames_processados = 0
     while True:
@@ -205,17 +205,21 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
             # Independentemente do espaçamento, a matemática recebe a máxima resolução
             carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
             
-            # --- O FILTRO ESTÉTICO: DESENHA APENAS SE A DISTÂNCIA FOR ATINGIDA ---
+            # --- A LÓGICA DO CARIMBO E DA FLAG ---
+            is_stamp = False # Por padrão, não é carimbo
+            
             if dist_pixels * scale_factor >= fator_distancia:
+                is_stamp = True # Ativa a flag se a distância foi atingida
                 x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
                 regiao = frame_atual[y_s:y_e, x_s:x_e]
                 
-                # Cola o "carimbo" na imagem final composta
                 if regiao.size > 0:
                     imagem_estroboscopica[y_s:y_e, x_s:x_e] = regiao
                 
-                # Atualiza a referência de distância APENAS quando um carimbo é desenhado
                 posicao_ultimo_carimbo_px = centro_atual_px
+
+            # Salva TODOS os frames para a matemática, incluindo a flag 'is_stamp'
+            carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1], is_stamp])
 
         # Grava o frame no arquivo de vídeo de saída
         out_video.write(frame_video_out)
@@ -232,7 +236,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
     
     if len(carimbos_data) < 2: return None
     
-    df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px'])
+    df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px', 'is_stamp'])
     df_carimbos['tempo_s'] = (df_carimbos['frame'] - start_frame_idx) / fps
     df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
     df_carimbos['pos_y_um'] = -(df_carimbos['pos_y_px'] - origin_coords[1]) * scale_factor
@@ -264,15 +268,19 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
 
 def desenhar_vetores_velocidade(imagem_estroboscopica_original, df_analisado, scale_vetor, max_len_vetor, cor_vetor, espessura_vetor):
     imagem_com_vetores = imagem_estroboscopica_original.copy()
-    for i in range(1, len(df_analisado)):
-        p_start_px = (int(df_analisado.loc[i, 'pos_x_px']), int(df_analisado.loc[i, 'pos_y_px']))
-        vx, vy = df_analisado.loc[i, 'vx_um_s'], df_analisado.loc[i, 'vy_um_s']
+    
+    # iterrows() garante que a função funcione mesmo se a tabela for filtrada
+    for index, row in df_analisado.iterrows():
+        p_start_px = (int(row['pos_x_px']), int(row['pos_y_px']))
+        vx, vy = row['vx_um_s'], row['vy_um_s']
         vel_magnitude = np.sqrt(vx**2 + vy**2)
+        
         if not np.isnan(vx) and not np.isnan(vy) and vel_magnitude > 0:
             arrow_length_pixels = min(max_len_vetor, vel_magnitude * scale_vetor)
             direction_x, direction_y = vx / vel_magnitude, vy / vel_magnitude
             p_end_px = (int(p_start_px[0] + direction_x * arrow_length_pixels), int(p_start_px[1] - direction_y * arrow_length_pixels))
             cv2.arrowedLine(imagem_com_vetores, p_start_px, p_end_px, cor_vetor, espessura_vetor, tipLength=0.3)
+            
     _, buffer = cv2.imencode('.PNG', imagem_com_vetores)
     return BytesIO(buffer).getvalue()
 
@@ -551,7 +559,11 @@ if st.session_state.results:
             
             if st.button("Gerar / Atualizar Imagem com Vetores", use_container_width=True):
                 imagem_original = cv2.imdecode(np.frombuffer(img_estrob_bytes, np.uint8), 1)
-                img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_final, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
+                
+                # --- NOVO: Filtra a tabela para usar apenas os pontos carimbados ---
+                df_apenas_carimbos = df_final[df_final['is_stamp'] == True]
+                
+                img_vetores_bytes = desenhar_vetores_velocidade(imagem_original, df_apenas_carimbos, scale_vetor, max_len_vetor, cores_bgr[cor_nome], espessura_vetor)
                 st.session_state.img_vetores = img_vetores_bytes
             
             if 'img_vetores' in st.session_state and st.session_state.img_vetores:
