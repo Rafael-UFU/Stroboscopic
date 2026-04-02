@@ -393,17 +393,18 @@ if st.session_state.step == "configuration":
             st.session_state.dim_H = dim_H
     
     # Usa o frame corrigido se a homografia foi ativada, senão usa o original
+    # Usa o frame corrigido se a homografia foi ativada, senão usa o original
     frame_ativo = st.session_state.get('frame_trabalho', st.session_state.raw_initial_frame)
     frame_com_grade = desenhar_grade_cartesiana(frame_ativo)
     altura_total, _, _ = frame_com_grade.shape
 
-    # 1. INICIALIZAÇÃO BLINDADA DO SESSION STATE (Garante que os dados das caixas e da imagem sejam sempre os mesmos)
+    # 1. INICIALIZAÇÃO BLINDADA DO SESSION STATE 
     chaves_padrao = {'orig_x': 0, 'orig_y': 0, 'x1': 0, 'y1': 0, 'x2': 0, 'y2': 0, 'obj_x': 0, 'obj_y': 0, 'obj_w': 50, 'obj_h': 50}
     for k, v in chaves_padrao.items():
         if k not in st.session_state:
-            st.session_state[k] = v
+            st.session_state[k] = int(v)
 
-    # 2. SELETOR DE FERRAMENTA (Lido antes de desenhar a imagem)
+    # 2. SELETOR DE FERRAMENTA
     st.markdown("### 🖱️ Calibração Interativa")
     st.info("Selecione um ponto abaixo e clique na imagem para definir sua coordenada, ou digite manualmente nas caixas.")
 
@@ -415,34 +416,33 @@ if st.session_state.step == "configuration":
 
     # 3. LÓGICA DE DESENHO INTELIGENTE E SINCRONIZADA
     frame_para_preview = frame_com_grade.copy()
-    oy_cv = altura_total - st.session_state.orig_y
-    y1_cv = altura_total - st.session_state.y1
-    y2_cv = altura_total - st.session_state.y2
-    obj_y_cv = altura_total - st.session_state.obj_y - st.session_state.obj_h
+    oy_cv = int(altura_total - st.session_state.orig_y)
+    y1_cv = int(altura_total - st.session_state.y1)
+    y2_cv = int(altura_total - st.session_state.y2)
+    obj_y_cv = int(altura_total - st.session_state.obj_y - st.session_state.obj_h)
 
     # A Origem é sempre desenhada (serve como âncora visual)
-    cv2.circle(frame_para_preview, (st.session_state.orig_x, oy_cv), 10, (255, 0, 255), -1)
-    cv2.putText(frame_para_preview, "(0,0)", (st.session_state.orig_x + 15, oy_cv), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+    cv2.circle(frame_para_preview, (int(st.session_state.orig_x), oy_cv), 10, (255, 0, 255), -1)
+    cv2.putText(frame_para_preview, "(0,0)", (int(st.session_state.orig_x) + 15, oy_cv), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
 
-    # A Calibração só desenha os pontos amarelos se tiverem saído do zero OU se o aluno estiver ativamente clicando neles
+    # Calibração e Objeto (Só desenha se sair do zero ou se a ferramenta estiver ativa)
     if (st.session_state.x1 != 0 or st.session_state.y1 != 0) or "Ponto 1" in ferramenta_ativa:
-        cv2.circle(frame_para_preview, (st.session_state.x1, y1_cv), 5, (0, 255, 255), -1)
+        cv2.circle(frame_para_preview, (int(st.session_state.x1), y1_cv), 5, (0, 255, 255), -1)
     if (st.session_state.x2 != 0 or st.session_state.y2 != 0) or "Ponto 2" in ferramenta_ativa:
-        cv2.circle(frame_para_preview, (st.session_state.x2, y2_cv), 5, (0, 255, 255), -1)
-    if (st.session_state.x1 != 0 or st.session_state.x2 != 0): # Desenha a linha conectando-os
-        cv2.line(frame_para_preview, (st.session_state.x1, y1_cv), (st.session_state.x2, y2_cv), (0, 255, 255), 2)
-
-    # O Objeto só é desenhado (retângulo azul) se tirado do zero OU ativamente selecionado
+        cv2.circle(frame_para_preview, (int(st.session_state.x2), y2_cv), 5, (0, 255, 255), -1)
+    if (st.session_state.x1 != 0 or st.session_state.x2 != 0):
+        cv2.line(frame_para_preview, (int(st.session_state.x1), y1_cv), (int(st.session_state.x2), y2_cv), (0, 255, 255), 2)
     if (st.session_state.obj_x != 0 or st.session_state.obj_y != 0) or "Objeto" in ferramenta_ativa:
-        cv2.rectangle(frame_para_preview, (st.session_state.obj_x, obj_y_cv), (st.session_state.obj_x + st.session_state.obj_w, obj_y_cv + st.session_state.obj_h), (255, 0, 0), 2)
+        cv2.rectangle(frame_para_preview, (int(st.session_state.obj_x), obj_y_cv), (int(st.session_state.obj_x + st.session_state.obj_w), int(obj_y_cv + st.session_state.obj_h)), (255, 0, 0), 2)
 
     # 4. RENDERIZAÇÃO DA IMAGEM E CAPTURA DE CLIQUE
     img_col1, img_col2, img_col3 = st.columns([1, 4, 1])
     with img_col2:
         imagem_rgb = cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB)
-        value = streamlit_image_coordinates(imagem_rgb, key="image_click")
+        
+        # O parâmetro use_column_width=True corrige os erros de escala das coordenadas!
+        value = streamlit_image_coordinates(imagem_rgb, key="image_click", use_column_width=True)
 
-        # Se houver clique, sincroniza e recarrega a página instantaneamente
         if value is not None:
             if st.session_state.get('last_click') != value:
                 st.session_state.last_click = value
@@ -452,21 +452,13 @@ if st.session_state.step == "configuration":
                 y_inv_click = int(altura_total - y_click)
 
                 if ferramenta_ativa == "📍 Origem (0,0)":
-                    st.session_state.orig_x = x_click
-                    st.session_state.orig_y = y_inv_click
-                    st.rerun()
+                    st.session_state.orig_x = x_click; st.session_state.orig_y = y_inv_click; st.rerun()
                 elif ferramenta_ativa == "📏 Calibração: Ponto 1":
-                    st.session_state.x1 = x_click
-                    st.session_state.y1 = y_inv_click
-                    st.rerun()
+                    st.session_state.x1 = x_click; st.session_state.y1 = y_inv_click; st.rerun()
                 elif ferramenta_ativa == "📏 Calibração: Ponto 2":
-                    st.session_state.x2 = x_click
-                    st.session_state.y2 = y_inv_click
-                    st.rerun()
+                    st.session_state.x2 = x_click; st.session_state.y2 = y_inv_click; st.rerun()
                 elif ferramenta_ativa == "📦 Objeto: Canto Esquerdo/Inferior":
-                    st.session_state.obj_x = x_click
-                    st.session_state.obj_y = y_inv_click
-                    st.rerun()
+                    st.session_state.obj_x = x_click; st.session_state.obj_y = y_inv_click; st.rerun()
 
         _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
         preview_bytes = BytesIO(buffer_preview).getvalue()
@@ -474,25 +466,45 @@ if st.session_state.step == "configuration":
 
     st.markdown("---")
     
+    # 5. INPUTS BLINDADOS (Lêem do estado central e forçam atualização sem cache)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("#### 1. Origem e Calibração")
-        orig_x = st.number_input("Origem (0,0) - Eixo X", 0, step=10, key="orig_x")
-        orig_y_usuario = st.number_input("Origem (0,0) - Eixo Y", 0, step=10, key="orig_y")
+        nx = st.number_input("Origem (0,0) - Eixo X", value=int(st.session_state.orig_x), step=10)
+        if nx != st.session_state.orig_x: st.session_state.orig_x = nx; st.rerun()
+        
+        ny = st.number_input("Origem (0,0) - Eixo Y", value=int(st.session_state.orig_y), step=10)
+        if ny != st.session_state.orig_y: st.session_state.orig_y = ny; st.rerun()
+        
         st.markdown("Espaço Real:")
         p1, p2 = st.columns(2)
-        x1 = p1.number_input("Ponto 1 - X", 0, step=10, key="x1")
-        y1_usuario = p2.number_input("Ponto 1 - Y", 0, step=10, key="y1")
-        x2 = p1.number_input("Ponto 2 - X", 0, step=10, key="x2")
-        y2_usuario = p2.number_input("Ponto 2 - Y", 0, step=10, key="y2")
+        nx1 = p1.number_input("Ponto 1 - X", value=int(st.session_state.x1), step=10)
+        if nx1 != st.session_state.x1: st.session_state.x1 = nx1; st.rerun()
+        
+        ny1 = p2.number_input("Ponto 1 - Y", value=int(st.session_state.y1), step=10)
+        if ny1 != st.session_state.y1: st.session_state.y1 = ny1; st.rerun()
+        
+        nx2 = p1.number_input("Ponto 2 - X", value=int(st.session_state.x2), step=10)
+        if nx2 != st.session_state.x2: st.session_state.x2 = nx2; st.rerun()
+        
+        ny2 = p2.number_input("Ponto 2 - Y", value=int(st.session_state.y2), step=10)
+        if ny2 != st.session_state.y2: st.session_state.y2 = ny2; st.rerun()
+        
         distancia_real = st.number_input("Distância real (u.m.)", min_value=0.01, format="%.4f", key="dist_real")
 
     with col2:
         st.markdown("#### 2. Rastreamento do Objeto")
-        obj_x = st.number_input("Canto Esquerdo - X", 0, step=10, key="obj_x")
-        obj_y_usuario = st.number_input("Canto Inferior - Y", 0, step=10, key="obj_y")
-        obj_w = st.number_input("Largura", min_value=10, value=50, step=10, key="obj_w")
-        obj_h = st.number_input("Altura", min_value=10, value=50, step=10, key="obj_h")
+        nox = st.number_input("Canto Esq. - X", value=int(st.session_state.obj_x), step=10)
+        if nox != st.session_state.obj_x: st.session_state.obj_x = nox; st.rerun()
+        
+        noy = st.number_input("Canto Inf. - Y", value=int(st.session_state.obj_y), step=10)
+        if noy != st.session_state.obj_y: st.session_state.obj_y = noy; st.rerun()
+        
+        now = st.number_input("Largura", value=int(st.session_state.obj_w), step=10)
+        if now != st.session_state.obj_w: st.session_state.obj_w = now; st.rerun()
+        
+        noh = st.number_input("Altura", value=int(st.session_state.obj_h), step=10)
+        if noh != st.session_state.obj_h: st.session_state.obj_h = noh; st.rerun()
 
     with col3:
         st.markdown("#### 3. Algoritmo e Suavização")
@@ -501,28 +513,27 @@ if st.session_state.step == "configuration":
         window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
         poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
 
-    # ---------------------------------------------------------
-    # PARTE 3: BOTÃO DE AÇÃO PRINCIPAL
-    # ---------------------------------------------------------
     st.markdown("---")
+    
+    # 6. INÍCIO DA ANÁLISE COM VARIÁVEIS BLINDADAS
     if window_size <= poly_order:
         st.error("Erro: O tamanho da janela do filtro deve ser maior que a ordem do polinômio.")
     else:
         if st.button("🚀 Iniciar Análise", type="primary", use_container_width=True):
             status_text = st.empty()
             with st.spinner("Extraindo cinemática..."):
-                orig_y_opencv = altura_total - orig_y_usuario
-                y1_opencv = altura_total - y1_usuario
-                y2_opencv = altura_total - y2_usuario
-                origin_coords = (orig_x, orig_y_opencv)
-                length_pixels = np.sqrt((x2 - x1)**2 + (y2_opencv - y1_opencv)**2)
+                oy_cv = int(altura_total - st.session_state.orig_y)
+                y1_cv = int(altura_total - st.session_state.y1)
+                y2_cv = int(altura_total - st.session_state.y2)
+                origin_coords = (int(st.session_state.orig_x), oy_cv)
+                
+                length_pixels = np.sqrt((st.session_state.x2 - st.session_state.x1)**2 + (y2_cv - y1_cv)**2)
                 
                 if length_pixels > 0:
                     scale_factor = distancia_real / length_pixels
-                    obj_y_opencv = altura_total - obj_y_usuario - obj_h
-                    bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
+                    obj_y_cv = int(altura_total - st.session_state.obj_y - st.session_state.obj_h)
+                    bbox_opencv = (int(st.session_state.obj_x), obj_y_cv, int(st.session_state.obj_w), int(st.session_state.obj_h))
                     
-                    # --- CORREÇÃO: Criação do cabeçalho CSV ---
                     header_comentarios = (
                         f"# Análise de Movimento - {pd.Timestamp.now()}\n"
                         f"# Frame Inicial: {st.session_state.start_frame_for_analysis}\n"
@@ -531,7 +542,6 @@ if st.session_state.step == "configuration":
                         f"# --- \n"
                     )
                     st.session_state.csv_header = header_comentarios
-                    # ------------------------------------------
                     
                     st.session_state.results = processar_video(
                         st.session_state.video_bytes, frame_ativo, st.session_state.start_frame_for_analysis, 
@@ -540,7 +550,7 @@ if st.session_state.step == "configuration":
                     )
                 else: 
                     st.error("A distância da calibração não pode ser zero.")
-
+                    
 if st.session_state.results:
     st.markdown("---")
     st.markdown("## ✅ Resultados da Análise Principal")
