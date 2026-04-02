@@ -1,5 +1,6 @@
 # Versão de 14 de Outubro de 2025
-opencv-contrib-python
+# opencv-contrib-python
+opencv-contrib-python-headless
 numpy
 streamlit
 pandas
