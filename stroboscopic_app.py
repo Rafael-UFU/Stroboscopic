@@ -396,98 +396,82 @@ if st.session_state.step == "configuration":
     frame_ativo = st.session_state.get('frame_trabalho', st.session_state.raw_initial_frame)
     frame_com_grade = desenhar_grade_cartesiana(frame_ativo)
     altura_total, _, _ = frame_com_grade.shape
-    
-    orig_x = st.session_state.get('orig_x', 0); orig_y_usuario = st.session_state.get('orig_y', 0)
-    x1 = st.session_state.get('x1', 0); y1_usuario = st.session_state.get('y1', 0)
-    x2 = st.session_state.get('x2', 0); y2_usuario = st.session_state.get('y2', 0)
-    obj_x = st.session_state.get('obj_x', 0); obj_y_usuario = st.session_state.get('obj_y', 0)
-    obj_w = st.session_state.get('obj_w', 50); obj_h = st.session_state.get('obj_h', 50)
 
-    frame_para_preview = frame_com_grade.copy()
-    orig_y_opencv_preview = altura_total - orig_y_usuario
-    y1_opencv_preview = altura_total - y1_usuario
-    y2_opencv_preview = altura_total - y2_usuario
-    obj_y_opencv_preview = altura_total - obj_y_usuario - obj_h
+    # 1. INICIALIZAÇÃO BLINDADA DO SESSION STATE (Garante que os dados das caixas e da imagem sejam sempre os mesmos)
+    chaves_padrao = {'orig_x': 0, 'orig_y': 0, 'x1': 0, 'y1': 0, 'x2': 0, 'y2': 0, 'obj_x': 0, 'obj_y': 0, 'obj_w': 50, 'obj_h': 50}
+    for k, v in chaves_padrao.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
-    #cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
-    #cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
-    #cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
-    #cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
-    #if obj_w > 0 and obj_h > 0: 
-    #    cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
-
-    # 1. Origem: Desenhamos sempre (serve como âncora visual para o aluno saber onde está o 0,0)
-    cv2.circle(frame_para_preview, (orig_x, orig_y_opencv_preview), 10, (255, 0, 255), -1)
-    cv2.putText(frame_para_preview, "(0,0)", (orig_x + 15, orig_y_opencv_preview), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
-
-    # 2. Calibração: Só desenha se o usuário tiver movido os pontos para fora do (0,0) padrão
-    if (x1 != 0 or y1_usuario != 0) or (x2 != 0 or y2_usuario != 0):
-        cv2.circle(frame_para_preview, (x1, y1_opencv_preview), 5, (0, 255, 255), -1)
-        cv2.circle(frame_para_preview, (x2, y2_opencv_preview), 5, (0, 255, 255), -1)
-        cv2.line(frame_para_preview, (x1, y1_opencv_preview), (x2, y2_opencv_preview), (0, 255, 255), 2)
-
-    # 3. Objeto: Só desenha o retângulo se o usuário tiver marcado o canto dele
-    if (obj_x != 0 or obj_y_usuario != 0):
-        if obj_w > 0 and obj_h > 0: 
-            cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
-    
+    # 2. SELETOR DE FERRAMENTA (Lido antes de desenhar a imagem)
     st.markdown("### 🖱️ Calibração Interativa")
     st.info("Selecione um ponto abaixo e clique na imagem para definir sua coordenada, ou digite manualmente nas caixas.")
-    
+
     ferramenta_ativa = st.radio(
         "Selecione o ponto para marcar no clique:",
         ["Nenhum (Apenas Visualizar)", "📍 Origem (0,0)", "📏 Calibração: Ponto 1", "📏 Calibração: Ponto 2", "📦 Objeto: Canto Esquerdo/Inferior"],
         horizontal=True
     )
-    
+
+    # 3. LÓGICA DE DESENHO INTELIGENTE E SINCRONIZADA
+    frame_para_preview = frame_com_grade.copy()
+    oy_cv = altura_total - st.session_state.orig_y
+    y1_cv = altura_total - st.session_state.y1
+    y2_cv = altura_total - st.session_state.y2
+    obj_y_cv = altura_total - st.session_state.obj_y - st.session_state.obj_h
+
+    # A Origem é sempre desenhada (serve como âncora visual)
+    cv2.circle(frame_para_preview, (st.session_state.orig_x, oy_cv), 10, (255, 0, 255), -1)
+    cv2.putText(frame_para_preview, "(0,0)", (st.session_state.orig_x + 15, oy_cv), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+
+    # A Calibração só desenha os pontos amarelos se tiverem saído do zero OU se o aluno estiver ativamente clicando neles
+    if (st.session_state.x1 != 0 or st.session_state.y1 != 0) or "Ponto 1" in ferramenta_ativa:
+        cv2.circle(frame_para_preview, (st.session_state.x1, y1_cv), 5, (0, 255, 255), -1)
+    if (st.session_state.x2 != 0 or st.session_state.y2 != 0) or "Ponto 2" in ferramenta_ativa:
+        cv2.circle(frame_para_preview, (st.session_state.x2, y2_cv), 5, (0, 255, 255), -1)
+    if (st.session_state.x1 != 0 or st.session_state.x2 != 0): # Desenha a linha conectando-os
+        cv2.line(frame_para_preview, (st.session_state.x1, y1_cv), (st.session_state.x2, y2_cv), (0, 255, 255), 2)
+
+    # O Objeto só é desenhado (retângulo azul) se tirado do zero OU ativamente selecionado
+    if (st.session_state.obj_x != 0 or st.session_state.obj_y != 0) or "Objeto" in ferramenta_ativa:
+        cv2.rectangle(frame_para_preview, (st.session_state.obj_x, obj_y_cv), (st.session_state.obj_x + st.session_state.obj_w, obj_y_cv + st.session_state.obj_h), (255, 0, 0), 2)
+
+    # 4. RENDERIZAÇÃO DA IMAGEM E CAPTURA DE CLIQUE
     img_col1, img_col2, img_col3 = st.columns([1, 4, 1])
-    # with img_col2:
-    #     st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), use_container_width=True)
     with img_col2:
-        # Converte a imagem para o formato correto
         imagem_rgb = cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB)
-        
-        # O componente exibe a imagem e retorna as coordenadas do clique (ou None)
         value = streamlit_image_coordinates(imagem_rgb, key="image_click")
-        
-        # --- LÓGICA DE SINCRONIZAÇÃO DO CLIQUE (CORRIGIDA) ---
+
+        # Se houver clique, sincroniza e recarrega a página instantaneamente
         if value is not None:
-            # Verifica se este clique é NOVO para evitar o loop infinito (tela piscando)
             if st.session_state.get('last_click') != value:
-                st.session_state.last_click = value  # Memoriza este clique
-                
+                st.session_state.last_click = value
+
                 x_click = int(value["x"])
                 y_click = int(value["y"])
-                
-                # O OpenCV considera Y=0 no topo. Como sua aplicação considera Y=0 embaixo, ajustamos:
-                y_invertido_click = int(altura_total - y_click)
+                y_inv_click = int(altura_total - y_click)
 
                 if ferramenta_ativa == "📍 Origem (0,0)":
                     st.session_state.orig_x = x_click
-                    st.session_state.orig_y = y_invertido_click
+                    st.session_state.orig_y = y_inv_click
                     st.rerun()
-                    
                 elif ferramenta_ativa == "📏 Calibração: Ponto 1":
                     st.session_state.x1 = x_click
-                    st.session_state.y1 = y_invertido_click
+                    st.session_state.y1 = y_inv_click
                     st.rerun()
-                    
                 elif ferramenta_ativa == "📏 Calibração: Ponto 2":
                     st.session_state.x2 = x_click
-                    st.session_state.y2 = y_invertido_click
+                    st.session_state.y2 = y_inv_click
                     st.rerun()
-                    
                 elif ferramenta_ativa == "📦 Objeto: Canto Esquerdo/Inferior":
                     st.session_state.obj_x = x_click
-                    st.session_state.obj_y = y_invertido_click
+                    st.session_state.obj_y = y_inv_click
                     st.rerun()
-        
-        # --- RESTAURADO: Botão de Download da Imagem de Configuração ---
+
         _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
         preview_bytes = BytesIO(buffer_preview).getvalue()
         st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
-        # ---------------------------------------------------------------
-        
+
     st.markdown("---")
     
     col1, col2, col3 = st.columns(3)
