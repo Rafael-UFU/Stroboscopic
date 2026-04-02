@@ -6,3 +6,4 @@ pandas
 scipy
 matplotlib
 Pillow
+pip install streamlit-image-coordinates
