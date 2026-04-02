@@ -431,6 +431,9 @@ if st.session_state.step == "configuration":
         window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
         poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
 
+    # ---------------------------------------------------------
+    # PARTE 3: BOTÃO DE AÇÃO PRINCIPAL
+    # ---------------------------------------------------------
     st.markdown("---")
     if window_size <= poly_order:
         st.error("Erro: O tamanho da janela do filtro deve ser maior que a ordem do polinômio.")
@@ -448,6 +451,17 @@ if st.session_state.step == "configuration":
                     scale_factor = distancia_real / length_pixels
                     obj_y_opencv = altura_total - obj_y_usuario - obj_h
                     bbox_opencv = (obj_x, obj_y_opencv, obj_w, obj_h)
+                    
+                    # --- CORREÇÃO: Criação do cabeçalho CSV ---
+                    header_comentarios = (
+                        f"# Análise de Movimento - {pd.Timestamp.now()}\n"
+                        f"# Frame Inicial: {st.session_state.start_frame_for_analysis}\n"
+                        f"# Origem (pixels): {origin_coords}\n"
+                        f"# Fator de Escala: {scale_factor:.6f} u.m./pixel\n"
+                        f"# --- \n"
+                    )
+                    st.session_state.csv_header = header_comentarios
+                    # ------------------------------------------
                     
                     st.session_state.results = processar_video(
                         st.session_state.video_bytes, frame_ativo, st.session_state.start_frame_for_analysis, 
