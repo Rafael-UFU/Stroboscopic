@@ -201,12 +201,20 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, bbox_coords_ope
             cv2.rectangle(frame_video_out, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.circle(frame_video_out, (int(centro_atual_px[0]), int(centro_atual_px[1])), 4, (0, 0, 255), -1)
             
+            # --- A GRANDE MUDANÇA: SALVA OS DADOS EM TODOS OS FRAMES ---
+            # Independentemente do espaçamento, a matemática recebe a máxima resolução
+            carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
+            
+            # --- O FILTRO ESTÉTICO: DESENHA APENAS SE A DISTÂNCIA FOR ATINGIDA ---
             if dist_pixels * scale_factor >= fator_distancia:
                 x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
                 regiao = frame_atual[y_s:y_e, x_s:x_e]
+                
+                # Cola o "carimbo" na imagem final composta
                 if regiao.size > 0:
                     imagem_estroboscopica[y_s:y_e, x_s:x_e] = regiao
-                carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
+                
+                # Atualiza a referência de distância APENAS quando um carimbo é desenhado
                 posicao_ultimo_carimbo_px = centro_atual_px
 
         # Grava o frame no arquivo de vídeo de saída
