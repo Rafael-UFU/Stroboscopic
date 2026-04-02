@@ -355,114 +355,101 @@ if st.session_state.step == "frame_selection":
 if st.session_state.step == "configuration":
     st.markdown("## Passo 3: Configuração e Análise")
     st.info("Ajuste os parâmetros abaixo. O layout responsivo se adapta à sua tela.")
-    
-    # Controle de Homografia
-    usar_homografia = st.checkbox("📐 Ativar Correção de Perspectiva (Avançado)", help="Corrige vídeos gravados em ângulo.")
-    
-    matriz_H = None
-    dim_H = None
-    
-    # Prevenção de erro: Garante que a imagem está na memória antes de copiar
-    if 'raw_initial_frame' not in st.session_state:
-        if 'initial_frame' in st.session_state:
-            # Puxa da versão antiga se o usuário estiver no meio do reload
-            st.session_state.raw_initial_frame = st.session_state.initial_frame
-        else:
-            # Trava a execução e avisa o usuário caso a memória esteja vazia
-            st.warning("Sessão expirada ou página recarregada. Por favor, volte ao Passo 1 e carregue o vídeo novamente.")
-            st.stop()
-            
-    frame_trabalho = st.session_state.raw_initial_frame.copy()
-    
-    if usar_homografia:
-        st.warning("Insira as coordenadas X,Y de 4 pontos que formam um retângulo na vida real (ex: uma folha A4 no fundo).")
-        hc1, hc2, hc3, hc4 = st.columns(4)
-        hx1 = hc1.number_input("Sup. Esq. X", 0, key='hx1'); hy1 = hc1.number_input("Sup. Esq. Y", 0, key='hy1')
-        hx2 = hc2.number_input("Sup. Dir. X", 100, key='hx2'); hy2 = hc2.number_input("Sup. Dir. Y", 0, key='hy2')
-        hx3 = hc3.number_input("Inf. Dir. X", 100, key='hx3'); hy3 = hc3.number_input("Inf. Dir. Y", 100, key='hy3')
-        hx4 = hc4.number_input("Inf. Esq. X", 0, key='hx4'); hy4 = hc4.number_input("Inf. Esq. Y", 100, key='hy4')
-        
-        larg_real_H = st.number_input("Largura Real desse Retângulo (u.m.)", value=1.0)
-        alt_real_H = st.number_input("Altura Real desse Retângulo (u.m.)", value=1.0)
-        
-        if st.button("Pré-visualizar Correção"):
-            pts_origem = [[hx1, hy1], [hx2, hy2], [hx3, hy3], [hx4, hy4]]
-            frame_trabalho, matriz_H, dim_H = aplicar_homografia(st.session_state.raw_initial_frame, pts_origem, larg_real_H, alt_real_H)
-            st.session_state.frame_trabalho = frame_trabalho
-            st.session_state.matriz_H = matriz_H
-            st.session_state.dim_H = dim_H
-    
-    # Usa o frame corrigido se a homografia foi ativada, senão usa o original
-    # Usa o frame corrigido se a homografia foi ativada, senão usa o original
-    frame_ativo = st.session_state.get('frame_trabalho', st.session_state.raw_initial_frame)
-    frame_com_grade = desenhar_grade_cartesiana(frame_ativo)
-    altura_total, _, _ = frame_com_grade.shape
 
-    # 1. INICIALIZAÇÃO BLINDADA DO SESSION STATE 
-    chaves_padrao = {'orig_x': 0, 'orig_y': 0, 'x1': 0, 'y1': 0, 'x2': 0, 'y2': 0, 'obj_x': 0, 'obj_y': 0, 'obj_w': 50, 'obj_h': 50}
+    # 1. INICIALIZAÇÃO BLINDADA DO SESSION STATE
+    chaves_padrao = {
+        'orig_x': 0, 'orig_y': 0, 'x1': 0, 'y1': 0, 'x2': 0, 'y2': 0,
+        'obj_x': 0, 'obj_y': 0, 'obj_w': 50, 'obj_h': 50,
+        # Valores padrão para a perspectiva formam um quadrado visível no canto
+        'hx1': 100, 'hy1': 100, 'hx2': 300, 'hy2': 100,
+        'hx3': 300, 'hy3': 300, 'hx4': 100, 'hy4': 300
+    }
     for k, v in chaves_padrao.items():
         if k not in st.session_state:
             st.session_state[k] = int(v)
 
+    usar_homografia = st.checkbox("📐 Ativar Correção de Perspectiva (Avançado)", help="Corrige vídeos gravados em ângulo.")
+
     # 2. SELETOR DE FERRAMENTA
     st.markdown("### 🖱️ Calibração Interativa")
-    st.info("Selecione um ponto abaixo e clique na imagem para definir sua coordenada, ou digite manualmente nas caixas.")
+    st.info("Selecione um ponto abaixo e clique na imagem para definir sua coordenada.")
 
-    ferramenta_ativa = st.radio(
-        "Selecione o ponto para marcar no clique:",
-        ["Nenhum (Apenas Visualizar)", "📍 Origem (0,0)", "📏 Calibração: Ponto 1", "📏 Calibração: Ponto 2", "📦 Objeto: Canto Esquerdo/Inferior"],
-        horizontal=True
-    )
+    opcoes_ferramenta = ["Nenhum (Apenas Visualizar)", "📍 Origem (0,0)", "📏 Calibração: Ponto 1", "📏 Calibração: Ponto 2", "📦 Objeto: Canto Esquerdo/Inferior"]
+    if usar_homografia:
+        opcoes_ferramenta.extend(["📐 Perspectiva: Sup. Esq. (1)", "📐 Perspectiva: Sup. Dir. (2)", "📐 Perspectiva: Inf. Dir. (3)", "📐 Perspectiva: Inf. Esq. (4)"])
 
-    # 3. LÓGICA DE DESENHO INTELIGENTE E SINCRONIZADA
+    ferramenta_ativa = st.radio("Selecione o ponto para marcar no clique:", opcoes_ferramenta, horizontal=True)
+
+    # 3. DETERMINA QUAL IMAGEM EXIBIR
+    # Se o usuário está ajustando a perspectiva, ele DEVE ver a imagem original torta.
+    if "Perspectiva" in ferramenta_ativa:
+        frame_ativo = st.session_state.raw_initial_frame.copy()
+        st.warning("⚠️ Exibindo a imagem original sem correção para você marcar os cantos da perspectiva.")
+    else:
+        frame_ativo = st.session_state.get('frame_trabalho', st.session_state.raw_initial_frame).copy()
+
+    frame_com_grade = desenhar_grade_cartesiana(frame_ativo)
+    altura_total, largura_total, _ = frame_com_grade.shape
+
+    # 4. LÓGICA DE DESENHO INTELIGENTE E SINCRONIZADA
     frame_para_preview = frame_com_grade.copy()
-    oy_cv = int(altura_total - st.session_state.orig_y)
-    y1_cv = int(altura_total - st.session_state.y1)
-    y2_cv = int(altura_total - st.session_state.y2)
-    obj_y_cv = int(altura_total - st.session_state.obj_y - st.session_state.obj_h)
 
-    # A Origem é sempre desenhada (serve como âncora visual)
-    cv2.circle(frame_para_preview, (int(st.session_state.orig_x), oy_cv), 10, (255, 0, 255), -1)
-    cv2.putText(frame_para_preview, "(0,0)", (int(st.session_state.orig_x) + 15, oy_cv), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+    # Desenho da Perspectiva (Laranja)
+    if usar_homografia:
+        pt1 = (int(st.session_state.hx1), int(st.session_state.hy1))
+        pt2 = (int(st.session_state.hx2), int(st.session_state.hy2))
+        pt3 = (int(st.session_state.hx3), int(st.session_state.hy3))
+        pt4 = (int(st.session_state.hx4), int(st.session_state.hy4))
+        
+        cv2.polylines(frame_para_preview, [np.array([pt1, pt2, pt3, pt4], dtype=np.int32)], isClosed=True, color=(0, 165, 255), thickness=2)
+        for i, pt in enumerate([pt1, pt2, pt3, pt4]):
+            cv2.circle(frame_para_preview, pt, 6, (0, 165, 255), -1)
+            cv2.putText(frame_para_preview, str(i+1), (pt[0]+10, pt[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
 
-    # Calibração e Objeto (Só desenha se sair do zero ou se a ferramenta estiver ativa)
-    if (st.session_state.x1 != 0 or st.session_state.y1 != 0) or "Ponto 1" in ferramenta_ativa:
-        cv2.circle(frame_para_preview, (int(st.session_state.x1), y1_cv), 5, (0, 255, 255), -1)
-    if (st.session_state.x2 != 0 or st.session_state.y2 != 0) or "Ponto 2" in ferramenta_ativa:
-        cv2.circle(frame_para_preview, (int(st.session_state.x2), y2_cv), 5, (0, 255, 255), -1)
-    if (st.session_state.x1 != 0 or st.session_state.x2 != 0):
-        cv2.line(frame_para_preview, (int(st.session_state.x1), y1_cv), (int(st.session_state.x2), y2_cv), (0, 255, 255), 2)
-    if (st.session_state.obj_x != 0 or st.session_state.obj_y != 0) or "Objeto" in ferramenta_ativa:
-        cv2.rectangle(frame_para_preview, (int(st.session_state.obj_x), obj_y_cv), (int(st.session_state.obj_x + st.session_state.obj_w), int(obj_y_cv + st.session_state.obj_h)), (255, 0, 0), 2)
+    # Desenho dos Componentes da Cinemática
+    # Só desenha se NÃO estivermos ajustando a perspectiva (para evitar visualização quebrada na troca de imagens)
+    if "Perspectiva" not in ferramenta_ativa:
+        oy_cv = int(altura_total - st.session_state.orig_y)
+        y1_cv = int(altura_total - st.session_state.y1)
+        y2_cv = int(altura_total - st.session_state.y2)
+        obj_y_cv = int(altura_total - st.session_state.obj_y - st.session_state.obj_h)
 
-    # 4. RENDERIZAÇÃO DA IMAGEM E CAPTURA DE CLIQUE
+        cv2.circle(frame_para_preview, (int(st.session_state.orig_x), oy_cv), 10, (255, 0, 255), -1)
+        cv2.putText(frame_para_preview, "(0,0)", (int(st.session_state.orig_x) + 15, oy_cv), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+
+        if (st.session_state.x1 != 0 or st.session_state.y1 != 0) or "Ponto 1" in ferramenta_ativa:
+            cv2.circle(frame_para_preview, (int(st.session_state.x1), y1_cv), 5, (0, 255, 255), -1)
+        if (st.session_state.x2 != 0 or st.session_state.y2 != 0) or "Ponto 2" in ferramenta_ativa:
+            cv2.circle(frame_para_preview, (int(st.session_state.x2), y2_cv), 5, (0, 255, 255), -1)
+        if (st.session_state.x1 != 0 or st.session_state.x2 != 0):
+            cv2.line(frame_para_preview, (int(st.session_state.x1), y1_cv), (int(st.session_state.x2), y2_cv), (0, 255, 255), 2)
+        if (st.session_state.obj_x != 0 or st.session_state.obj_y != 0) or "Objeto" in ferramenta_ativa:
+            cv2.rectangle(frame_para_preview, (int(st.session_state.obj_x), obj_y_cv), (int(st.session_state.obj_x + st.session_state.obj_w), int(obj_y_cv + st.session_state.obj_h)), (255, 0, 0), 2)
+
+    # 5. RENDERIZAÇÃO DA IMAGEM E CAPTURA DE CLIQUE
     img_col1, img_col2, img_col3 = st.columns([1, 5, 1])
     with img_col2:
-        # --- BLINDAGEM DE ESCALA (A SOLUÇÃO PARA O DESVIO DO CLIQUE) ---
         larg_orig = frame_para_preview.shape[1]
         alt_orig = frame_para_preview.shape[0]
-        
-        LARGURA_TELA = 800 # Forçamos a imagem a ter no máximo 800px na tela
+
+        LARGURA_TELA = 800
         escala = larg_orig / LARGURA_TELA if larg_orig > LARGURA_TELA else 1.0
-        
+
         if escala > 1.0:
             frame_exibicao = cv2.resize(frame_para_preview, (LARGURA_TELA, int(alt_orig / escala)))
         else:
             frame_exibicao = frame_para_preview
 
         imagem_rgb = cv2.cvtColor(frame_exibicao, cv2.COLOR_BGR2RGB)
-        
-        # Removemos o "use_column_width" para evitar distorções do navegador
         value = streamlit_image_coordinates(imagem_rgb, key="image_click")
 
         if value is not None:
             if st.session_state.get('last_click') != value:
                 st.session_state.last_click = value
 
-                # A Mágica: Multiplica a coordenada clicada na tela pela escala para achar o pixel real!
                 x_click = int(value["x"] * escala)
                 y_click = int(value["y"] * escala)
-                y_inv_click = int(altura_total - y_click) # Inverte o Y para o referencial da física
+                y_inv_click = int(altura_total - y_click)
 
                 if ferramenta_ativa == "📍 Origem (0,0)":
                     st.session_state.orig_x = x_click; st.session_state.orig_y = y_inv_click; st.rerun()
@@ -472,14 +459,59 @@ if st.session_state.step == "configuration":
                     st.session_state.x2 = x_click; st.session_state.y2 = y_inv_click; st.rerun()
                 elif ferramenta_ativa == "📦 Objeto: Canto Esquerdo/Inferior":
                     st.session_state.obj_x = x_click; st.session_state.obj_y = y_inv_click; st.rerun()
+                elif ferramenta_ativa == "📐 Perspectiva: Sup. Esq. (1)":
+                    st.session_state.hx1 = x_click; st.session_state.hy1 = y_click; st.rerun()
+                elif ferramenta_ativa == "📐 Perspectiva: Sup. Dir. (2)":
+                    st.session_state.hx2 = x_click; st.session_state.hy2 = y_click; st.rerun()
+                elif ferramenta_ativa == "📐 Perspectiva: Inf. Dir. (3)":
+                    st.session_state.hx3 = x_click; st.session_state.hy3 = y_click; st.rerun()
+                elif ferramenta_ativa == "📐 Perspectiva: Inf. Esq. (4)":
+                    st.session_state.hx4 = x_click; st.session_state.hy4 = y_click; st.rerun()
 
         _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
         preview_bytes = BytesIO(buffer_preview).getvalue()
         st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
 
     st.markdown("---")
-    
-    # 5. INPUTS BLINDADOS (Lêem do estado central e forçam atualização sem cache)
+
+    # 6. INPUTS BLINDADOS E BOTÕES
+    if usar_homografia:
+        with st.expander("🛠️ Ajuste Manual da Homografia e Execução", expanded=True):
+            st.info("Você pode fazer o ajuste fino dos 4 cantos pelos números abaixo. Após configurar, clique em aplicar.")
+            hc1, hc2, hc3, hc4 = st.columns(4)
+            nhx1 = hc1.number_input("Sup. Esq. X (1)", value=int(st.session_state.hx1), step=10)
+            if nhx1 != st.session_state.hx1: st.session_state.hx1 = nhx1; st.rerun()
+            nhy1 = hc1.number_input("Sup. Esq. Y (1)", value=int(st.session_state.hy1), step=10)
+            if nhy1 != st.session_state.hy1: st.session_state.hy1 = nhy1; st.rerun()
+
+            nhx2 = hc2.number_input("Sup. Dir. X (2)", value=int(st.session_state.hx2), step=10)
+            if nhx2 != st.session_state.hx2: st.session_state.hx2 = nhx2; st.rerun()
+            nhy2 = hc2.number_input("Sup. Dir. Y (2)", value=int(st.session_state.hy2), step=10)
+            if nhy2 != st.session_state.hy2: st.session_state.hy2 = nhy2; st.rerun()
+
+            nhx3 = hc3.number_input("Inf. Dir. X (3)", value=int(st.session_state.hx3), step=10)
+            if nhx3 != st.session_state.hx3: st.session_state.hx3 = nhx3; st.rerun()
+            nhy3 = hc3.number_input("Inf. Dir. Y (3)", value=int(st.session_state.hy3), step=10)
+            if nhy3 != st.session_state.hy3: st.session_state.hy3 = nhy3; st.rerun()
+
+            nhx4 = hc4.number_input("Inf. Esq. X (4)", value=int(st.session_state.hx4), step=10)
+            if nhx4 != st.session_state.hx4: st.session_state.hx4 = nhx4; st.rerun()
+            nhy4 = hc4.number_input("Inf. Esq. Y (4)", value=int(st.session_state.hy4), step=10)
+            if nhy4 != st.session_state.hy4: st.session_state.hy4 = nhy4; st.rerun()
+
+            hc_w, hc_h = st.columns(2)
+            larg_real_H = hc_w.number_input("Largura Real do Retângulo (u.m.)", value=1.0)
+            alt_real_H = hc_h.number_input("Altura Real do Retângulo (u.m.)", value=1.0)
+
+            if st.button("🔄 Aplicar Correção de Perspectiva", use_container_width=True):
+                pts_origem = [[st.session_state.hx1, st.session_state.hy1], [st.session_state.hx2, st.session_state.hy2], [st.session_state.hx3, st.session_state.hy3], [st.session_state.hx4, st.session_state.hy4]]
+                frame_trabalho, matriz_H, dim_H = aplicar_homografia(st.session_state.raw_initial_frame, pts_origem, larg_real_H, alt_real_H)
+                st.session_state.frame_trabalho = frame_trabalho
+                st.session_state.matriz_H = matriz_H
+                st.session_state.dim_H = dim_H
+                # Força a interface a voltar para "Nenhum" para exibir o resultado desamassado
+                st.rerun()
+
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("#### 1. Origem e Calibração")
@@ -525,7 +557,7 @@ if st.session_state.step == "configuration":
         st.markdown("**Filtro Savitzky-Golay:**")
         window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
         poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
-
+   
     st.markdown("---")
     
     # 6. INÍCIO DA ANÁLISE COM VARIÁVEIS BLINDADAS
