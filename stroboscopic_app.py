@@ -416,9 +416,54 @@ if st.session_state.step == "configuration":
     if obj_w > 0 and obj_h > 0: 
         cv2.rectangle(frame_para_preview, (obj_x, obj_y_opencv_preview), (obj_x + obj_w, obj_y_opencv_preview + obj_h), (255, 0, 0), 2)
     
+    st.markdown("### 🖱️ Calibração Interativa")
+    st.info("Selecione um ponto abaixo e clique na imagem para definir sua coordenada, ou digite manualmente nas caixas.")
+    
+    ferramenta_ativa = st.radio(
+        "Selecione o ponto para marcar no clique:",
+        ["Nenhum (Apenas Visualizar)", "📍 Origem (0,0)", "📏 Calibração: Ponto 1", "📏 Calibração: Ponto 2", "📦 Objeto: Canto Esquerdo/Inferior"],
+        horizontal=True
+    )
+    
     img_col1, img_col2, img_col3 = st.columns([1, 4, 1])
+    # with img_col2:
+    #     st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), use_container_width=True)
     with img_col2:
-        st.image(cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB), use_container_width=True)
+        # Converte a imagem para o formato correto
+        imagem_rgb = cv2.cvtColor(frame_para_preview, cv2.COLOR_BGR2RGB)
+        
+        # O componente exibe a imagem e retorna as coordenadas do clique (ou None)
+        value = streamlit_image_coordinates(imagem_rgb, key="image_click")
+        
+        # --- LÓGICA DE SINCRONIZAÇÃO DO CLIQUE ---
+        if value is not None:
+            # O componente retorna dicionário com 'x' e 'y' do clique original na imagem
+            x_click = value["x"]
+            y_click = value["y"]
+            
+            # O OpenCV considera Y=0 no topo. Como sua aplicação considera Y=0 embaixo
+            # (orig_y_opencv = altura_total - orig_y_usuario), ajustamos o clique:
+            y_invertido_click = altura_total - y_click
+
+            if ferramenta_ativa == "📍 Origem (0,0)":
+                st.session_state.orig_x = x_click
+                st.session_state.orig_y = y_invertido_click
+                st.rerun() # Atualiza a tela instantaneamente
+                
+            elif ferramenta_ativa == "📏 Calibração: Ponto 1":
+                st.session_state.x1 = x_click
+                st.session_state.y1 = y_invertido_click
+                st.rerun()
+                
+            elif ferramenta_ativa == "📏 Calibração: Ponto 2":
+                st.session_state.x2 = x_click
+                st.session_state.y2 = y_invertido_click
+                st.rerun()
+                
+            elif ferramenta_ativa == "📦 Objeto: Canto Esquerdo/Inferior":
+                st.session_state.obj_x = x_click
+                st.session_state.obj_y = y_invertido_click
+                st.rerun()
         
         # --- RESTAURADO: Botão de Download da Imagem de Configuração ---
         _, buffer_preview = cv2.imencode('.PNG', frame_para_preview)
