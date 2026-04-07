@@ -245,12 +245,27 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, 
     # Cálculo Cinemático (Savitzky-Golay vs Diferenças Finitas) 
     if len(df_carimbos) > window_size:
         dt = 1.0 / fps
-        df_carimbos['pos_x_um'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=0)
-        df_carimbos['pos_y_um'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=0)
-        df_carimbos['vx_um_s'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
-        df_carimbos['vy_um_s'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
-        df_carimbos['ax_um_s2'] = savgol_filter(df_carimbos['pos_x_um'], window_length=window_size, polyorder=poly_order, deriv=2, delta=dt)
-        df_carimbos['ay_um_s2'] = savgol_filter(df_carimbos['pos_y_um'], window_length=window_size, polyorder=poly_order, deriv=2, delta=dt)
+        
+        # --- A CORREÇÃO DE OURO: BLINDAGEM DOS DADOS BRUTOS ---
+        # Extraímos os arrays originais (com ruído do vídeo) para alimentar o filtro.
+        pos_x_raw = df_carimbos['pos_x_um'].to_numpy()
+        pos_y_raw = df_carimbos['pos_y_um'].to_numpy()
+        
+        # 1. Velocidade (Primeira Derivada DIRETO do dado bruto)
+        df_carimbos['vx_um_s'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
+        df_carimbos['vy_um_s'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
+        
+        # 2. Aceleração (Segunda Derivada DIRETO do dado bruto)
+        # Proteção matemática: A 2ª derivada requer um polinômio de ordem >= 2. 
+        # Se o usuário escolheu 1, forçamos o cálculo da aceleração com 2 para não quebrar a física.
+        ordem_acc = poly_order if poly_order >= 2 else 2
+        df_carimbos['ax_um_s2'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=ordem_acc, deriv=2, delta=dt)
+        df_carimbos['ay_um_s2'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=ordem_acc, deriv=2, delta=dt)
+        
+        # 3. Posição (Suavização final - Derivada 0)
+        # Fazemos isso por último para não poluir os cálculos derivados acima!
+        df_carimbos['pos_x_um'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=poly_order, deriv=0)
+        df_carimbos['pos_y_um'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=poly_order, deriv=0)
     else:
         delta_t = df_carimbos['tempo_s'].diff()
         df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
