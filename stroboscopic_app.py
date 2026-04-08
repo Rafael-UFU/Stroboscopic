@@ -244,7 +244,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, 
 
     # Cálculo Cinemático (Savitzky-Golay vs Diferenças Finitas) 
     if len(df_carimbos) > window_size:
-        dt = 1.0 / fps
+        dt = 1.0 / (fps-1)
         
         # --- A CORREÇÃO DE OURO: BLINDAGEM DOS DADOS BRUTOS ---
         # Extraímos os arrays originais (com ruído do vídeo) para alimentar o filtro.
