@@ -332,6 +332,8 @@ if st.session_state.step == "frame_selection":
 
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(st.session_state.video_bytes)
+    tfile.close() # <--- BLINDAGEM: Força o OS a gravar o arquivo fisicamente
+    
     cap = cv2.VideoCapture(tfile.name)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -365,28 +367,31 @@ if st.session_state.step == "frame_selection":
         st.markdown(f"**Frame Inicial:** `{st.session_state.start_idx}`")
         if st.button("📍 Marcar Preview como INICIAL", use_container_width=True):
             st.session_state.start_idx = st.session_state.preview_idx
-            if st.session_state.start_idx > st.session_state.end_idx:
-                st.session_state.end_idx = st.session_state.start_idx # Proteção contra limites invertidos
+            if st.session_state.start_idx > st.session_state.end_idx: st.session_state.end_idx = st.session_state.start_idx 
             st.rerun()
     with lim_col2:
         st.markdown(f"**Frame Final:** `{st.session_state.end_idx}`")
         if st.button("🛑 Marcar Preview como FINAL", use_container_width=True):
             st.session_state.end_idx = st.session_state.preview_idx
-            if st.session_state.end_idx < st.session_state.start_idx:
-                st.session_state.start_idx = st.session_state.end_idx
+            if st.session_state.end_idx < st.session_state.start_idx: st.session_state.start_idx = st.session_state.end_idx
             st.rerun()
 
     st.markdown("---")
     if st.button("✅ Confirmar Intervalo e Iniciar Configuração", type="primary", use_container_width=True):
-        # A imagem base que vai para configuração TEM que ser o Frame Inicial selecionado!
-        cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.start_idx)
-        _, frame_inicial_real = cap.read()
+        # AVALANCHE MANUAL (Evita o bug do Keyframe)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        for _ in range(st.session_state.start_idx):
+            cap.read()
+        success, frame_inicial_real = cap.read()
         
-        st.session_state.raw_initial_frame = frame_inicial_real
-        st.session_state.start_frame_for_analysis = st.session_state.start_idx
-        st.session_state.end_frame_for_analysis = st.session_state.end_idx
-        st.session_state.step = "configuration"
-        st.rerun()
+        if success:
+            st.session_state.raw_initial_frame = frame_inicial_real
+            st.session_state.start_frame_for_analysis = st.session_state.start_idx
+            st.session_state.end_frame_for_analysis = st.session_state.end_idx
+            st.session_state.step = "configuration"
+            st.rerun()
+        else:
+            st.error("Erro ao processar o frame inicial do vídeo.")
 
     cap.release(), os.remove(tfile.name)
 
