@@ -149,18 +149,13 @@ def calcular_ajuste_teorico(t, y, grau):
     r2 = 1 - (ss_res / ss_tot)
     return p, y_pred, r2, coefs
 
-def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2, matriz_homografia=None, dimensao_homografia=None, fps_override=0.0):
+def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2, matriz_homografia=None, dimensao_homografia=None):
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_bytes)
     video_path = tfile.name
 
     cap = cv2.VideoCapture(video_path)
-    
-    # --- LÓGICA DE TEMPO BLINDADA ---
-    fps_metadados = cap.get(cv2.CAP_PROP_FPS) or 30
-    fps = fps_override if fps_override > 0 else fps_metadados
-    # --------------------------------
-    
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx)
 
@@ -597,7 +592,6 @@ if st.session_state.step == "configuration":
     with col3:
         st.markdown("#### 3. Algoritmo e Suavização")
         fator_dist = st.slider("Espaçamento de Captura", 0.01, 5.0, 0.5, 0.01)
-        fps_manual = st.number_input("FPS Manual (Opcional)", min_value=0.0, value=0.0, help="Deixe em 0.0 para usar o FPS nativo do arquivo de vídeo.")
         st.markdown("**Filtro Savitzky-Golay:**")
         window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
         poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
@@ -638,8 +632,7 @@ if st.session_state.step == "configuration":
                         st.session_state.start_frame_for_analysis, 
                         st.session_state.end_frame_for_analysis, 
                         bbox_opencv, fator_dist, scale_factor, origin_coords, status_text, window_size, poly_order,
-                        st.session_state.get('matriz_H', None), st.session_state.get('dim_H', None),
-                        fps_override=fps_manual
+                        st.session_state.get('matriz_H', None), st.session_state.get('dim_H', None)
                     )
                 else: 
                     st.error("A distância da calibração não pode ser zero.")
