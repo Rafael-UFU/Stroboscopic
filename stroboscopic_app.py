@@ -152,14 +152,14 @@ def calcular_ajuste_teorico(t, y, grau):
 def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2, matriz_homografia=None, dimensao_homografia=None):
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_bytes)
-    tfile.close() # <--- BLINDAGEM DE ARQUIVO
+    tfile.close() # <--- ESSENCIAL
     video_path = tfile.name
 
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    # --- AVALANCHE MANUAL (Evita o bug de keyframes do OpenCV com H.264) ---
+    # --- AVALANCHE MANUAL ---
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     for _ in range(start_frame_idx):
         cap.read()
@@ -174,7 +174,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, 
     # Configuração do Exportador de Vídeo
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     temp_video_out = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    temp_video_out.close() # Libera o arquivo para o OpenCV gravar
+    temp_video_out.close() # <--- Libera o arquivo para o OpenCV conseguir gravar
     out_video = cv2.VideoWriter(temp_video_out.name, fourcc, fps, (largura_frame, altura_frame))
     
     carimbos_data = []
@@ -323,8 +323,7 @@ if st.session_state.step == "frame_selection":
 
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(st.session_state.video_bytes)
-    tfile.close() # <--- BLINDAGEM: Força o OS a gravar o arquivo fisicamente
-    
+    tfile.close() # <--- ESSENCIAL: Força o sistema a gravar o arquivo antes de ler
     cap = cv2.VideoCapture(tfile.name)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -369,7 +368,7 @@ if st.session_state.step == "frame_selection":
 
     st.markdown("---")
     if st.button("✅ Confirmar Intervalo e Iniciar Configuração", type="primary", use_container_width=True):
-        # AVALANCHE MANUAL (Evita o bug do Keyframe)
+        # AVALANCHE MANUAL (Garante que o OpenCV pegue o frame exato, ignorando keyframes)
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         for _ in range(st.session_state.start_idx):
             cap.read()
@@ -382,7 +381,7 @@ if st.session_state.step == "frame_selection":
             st.session_state.step = "configuration"
             st.rerun()
         else:
-            st.error("Erro ao processar o frame inicial do vídeo.")
+            st.error("Erro na leitura do frame.")
 
     cap.release(), os.remove(tfile.name)
 
