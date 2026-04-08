@@ -152,12 +152,17 @@ def calcular_ajuste_teorico(t, y, grau):
 def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, bbox_coords_opencv, fator_distancia, scale_factor, origin_coords, status_text_element, window_size=11, poly_order=2, matriz_homografia=None, dimensao_homografia=None):
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     tfile.write(video_bytes)
+    tfile.close() # <--- BLINDAGEM DE ARQUIVO
     video_path = tfile.name
 
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_idx)
+    
+    # --- AVALANCHE MANUAL (Evita o bug de keyframes do OpenCV com H.264) ---
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    for _ in range(start_frame_idx):
+        cap.read()
 
     # Tracker CSRT é robusto a mudanças de textura e iluminação
     tracker = cv2.TrackerCSRT_create()
@@ -169,48 +174,41 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, 
     # Configuração do Exportador de Vídeo
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     temp_video_out = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    temp_video_out.close() # Libera o arquivo para o OpenCV gravar
     out_video = cv2.VideoWriter(temp_video_out.name, fourcc, fps, (largura_frame, altura_frame))
     
     carimbos_data = []
-    # Inicializamos a posição de referência, mas NÃO adicionamos à lista ainda (Resolve o bug do ponto duplo)
     posicao_ultimo_carimbo_px = (bbox_coords_opencv[0] + bbox_coords_opencv[2]/2, bbox_coords_opencv[1] + bbox_coords_opencv[3]/2)
 
     contador_frames_processados = 0
     while True:
         frame_atual_idx = start_frame_idx + contador_frames_processados
         
-        # --- O LAÇO PARA NO FRAME FINAL ---
         if frame_atual_idx > end_frame_idx or frame_atual_idx >= total_frames: 
             break
 
         success, frame_atual = cap.read()
         if not success: break
         
-        # Se a homografia estiver ativa, corrige a perspectiva do frame do vídeo antes de rastrear
         if matriz_homografia is not None:
             frame_atual = cv2.warpPerspective(frame_atual, matriz_homografia, dimensao_homografia)
         
         status_text_element.text(f"Processando e Rastreando frame {frame_atual_idx}/{end_frame_idx}...")
         
         success_track, bbox_atual = tracker.update(frame_atual)
-        frame_video_out = frame_atual.copy() # Cópia para o vídeo exportado
+        frame_video_out = frame_atual.copy() 
         
         if success_track:
             centro_atual_px = (bbox_atual[0] + bbox_atual[2]/2, bbox_atual[1] + bbox_atual[3]/2)
             dist_pixels = np.sqrt((centro_atual_px[0] - posicao_ultimo_carimbo_px[0])**2 + (centro_atual_px[1] - posicao_ultimo_carimbo_px[1])**2)
             
             (x, y, w, h) = [int(v) for v in bbox_atual]
-            
-            # Desenha o Bounding Box no frame que será exportado para vídeo
             cv2.rectangle(frame_video_out, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.circle(frame_video_out, (int(centro_atual_px[0]), int(centro_atual_px[1])), 4, (0, 0, 255), -1)
             
-            # Salva o dado matemático de TODO frame
             carimbos_data.append([frame_atual_idx, centro_atual_px[0], centro_atual_px[1]])
             
             is_stamp = False
-            
-            # O primeiro frame (contador == 0) SEMPRE será um carimbo na imagem composta
             if contador_frames_processados == 0 or (dist_pixels * scale_factor >= fator_distancia):
                 is_stamp = True 
                 x_s, y_s, x_e, y_e = max(x, 0), max(y, 0), min(x + w, largura_frame), min(y + h, altura_frame)
@@ -221,7 +219,7 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, 
                 
                 posicao_ultimo_carimbo_px = centro_atual_px
 
-            carimbos_data[-1].append(is_stamp) # Adiciona a flag no último elemento
+            carimbos_data[-1].append(is_stamp)
 
         out_video.write(frame_video_out)
         contador_frames_processados += 1
@@ -230,40 +228,33 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, 
     out_video.release()
     os.remove(video_path)
     
+    # --- ALERTA ANTI-FALHA SILENCIOSA ---
+    if len(carimbos_data) < 2: 
+        status_text_element.error("⚠️ Erro Crítico: O algoritmo perdeu o objeto. O objeto pode ter saído da tela, faltou contraste (ex: fundo liso demais), ou a caixa de rastreio não estava sobre o alvo.")
+        return None
+    
     # Lê os bytes do vídeo gerado
     with open(temp_video_out.name, 'rb') as f:
         video_track_bytes = f.read()
     os.remove(temp_video_out.name)
-    
-    if len(carimbos_data) < 2: return None
     
     df_carimbos = pd.DataFrame(carimbos_data, columns=['frame', 'pos_x_px', 'pos_y_px', 'is_stamp'])
     df_carimbos['tempo_s'] = (df_carimbos['frame'] - start_frame_idx) / fps
     df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
     df_carimbos['pos_y_um'] = -(df_carimbos['pos_y_px'] - origin_coords[1]) * scale_factor
 
-    # Cálculo Cinemático (Savitzky-Golay vs Diferenças Finitas) 
     if len(df_carimbos) > window_size:
         dt = 1.0 / fps
-        
-        # --- A CORREÇÃO DE OURO: BLINDAGEM DOS DADOS BRUTOS ---
-        # Extraímos os arrays originais (com ruído do vídeo) para alimentar o filtro.
         pos_x_raw = df_carimbos['pos_x_um'].to_numpy()
         pos_y_raw = df_carimbos['pos_y_um'].to_numpy()
         
-        # 1. Velocidade (Primeira Derivada DIRETO do dado bruto)
         df_carimbos['vx_um_s'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
         df_carimbos['vy_um_s'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
         
-        # 2. Aceleração (Segunda Derivada DIRETO do dado bruto)
-        # Proteção matemática: A 2ª derivada requer um polinômio de ordem >= 2. 
-        # Se o usuário escolheu 1, forçamos o cálculo da aceleração com 2 para não quebrar a física.
         ordem_acc = poly_order if poly_order >= 2 else 2
         df_carimbos['ax_um_s2'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=ordem_acc, deriv=2, delta=dt)
         df_carimbos['ay_um_s2'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=ordem_acc, deriv=2, delta=dt)
         
-        # 3. Posição (Suavização final - Derivada 0)
-        # Fazemos isso por último para não poluir os cálculos derivados acima!
         df_carimbos['pos_x_um'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=poly_order, deriv=0)
         df_carimbos['pos_y_um'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=poly_order, deriv=0)
     else:
