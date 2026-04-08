@@ -585,10 +585,20 @@ if st.session_state.step == "configuration":
         if noh != st.session_state.obj_h: st.session_state.obj_h = noh; st.rerun()
 
     with col3:
+        # Calcula o número total de frames do corte para travar o limite do slider
+        total_frames_corte = st.session_state.end_frame_for_analysis - st.session_state.start_frame_for_analysis + 1
+        
+        # Garante que o max_janela seja ímpar e não ultrapasse os frames do corte
+        max_janela = total_frames_corte if total_frames_corte % 2 != 0 else total_frames_corte - 1
+        
+        # Proteção extra: se o vídeo for muito curto, crava o mínimo
+        if max_janela < 5: max_janela = 5 
+        
         st.markdown("#### 3. Algoritmo e Suavização")
         fator_dist = st.slider("Espaçamento de Captura", 0.01, 5.0, 0.5, 0.01)
         st.markdown("**Filtro Savitzky-Golay:**")
-        window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
+        #window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
+        window_size = st.slider("Tamanho da Janela", min_value=5, max_value=int(max_janela), value=min(11, int(max_janela)), step=2)
         poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
 
         #Adicionando o botão de ajuda expansível com as dicas didáticas
