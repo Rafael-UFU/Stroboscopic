@@ -460,13 +460,15 @@ if st.session_state.step == "configuration":
             cv2.rectangle(frame_para_preview, (int(st.session_state.obj_x), obj_y_cv), (int(st.session_state.obj_x + st.session_state.obj_w), int(obj_y_cv + st.session_state.obj_h)), (255, 0, 0), 2)
 
     # 5. RENDERIZAÇÃO DA IMAGEM PRINCIPAL E PAINEL DE LUPA (ZOOM)
-    view_col1, view_col2 = st.columns([5, 2]) # A imagem ocupa 70% da tela, a lupa 30%
+    # Ajuste de Layout: Proporção 4:1 dá 80% da tela para a imagem principal e 20% para a Lupa
+    view_col1, view_col2 = st.columns([4, 1]) 
     
     with view_col1:
         larg_orig = frame_para_preview.shape[1]
         alt_orig = frame_para_preview.shape[0]
 
-        LARGURA_TELA = 800
+        # Aumentado para 1200 para preencher as telas Wide sem deixar buracos vazios
+        LARGURA_TELA = 1200 
         escala = larg_orig / LARGURA_TELA if larg_orig > LARGURA_TELA else 1.0
 
         if escala > 1.0:
@@ -507,73 +509,69 @@ if st.session_state.step == "configuration":
         st.download_button("💾 Baixar Imagem de Configuração", preview_bytes, "imagem_configuracao.png", "image/png", use_container_width=True)
 
     with view_col2:
-        st.markdown("### 🔍 Lupa (Zoom 4x)")
-        st.caption("Ajuste Fino: Clique na imagem ampliada para corrigir o pixel exato.")
-        
-        # 1. Identifica a coordenada global da ferramenta que está selecionada no momento
-        cx, cy = None, None
-        if ferramenta_ativa != "Nenhum (Apenas Visualizar)":
+        # 1. Se a ferramenta do Objeto estiver ativa, oculta a Lupa
+        if ferramenta_ativa == "📦 Objeto: Canto Esquerdo/Inferior":
+            st.markdown("### 🔍 Lupa Oculta")
+            st.info("A Lupa de Precisão é desativada durante a seleção do Objeto para priorizar a visualização geral da caixa de rastreio.")
+            
+        # 2. Lógica da Lupa para as demais ferramentas
+        elif ferramenta_ativa != "Nenhum (Apenas Visualizar)":
+            st.markdown("### 🔍 Lupa (Zoom 4x)")
+            st.caption("Ajuste Fino: Clique na imagem para corrigir o pixel exato.")
+            
+            cx, cy = None, None
             if ferramenta_ativa == "📍 Origem (0,0)": cx, cy = st.session_state.orig_x, int(altura_total - st.session_state.orig_y)
             elif ferramenta_ativa == "📏 Calibração: Ponto 1": cx, cy = st.session_state.x1, int(altura_total - st.session_state.y1)
             elif ferramenta_ativa == "📏 Calibração: Ponto 2": cx, cy = st.session_state.x2, int(altura_total - st.session_state.y2)
-            elif ferramenta_ativa == "📦 Objeto: Canto Esquerdo/Inferior": cx, cy = st.session_state.obj_x, int(altura_total - st.session_state.obj_y - st.session_state.obj_h)
             elif ferramenta_ativa == "📐 Perspectiva: Sup. Esq. (1)": cx, cy = st.session_state.hx1, st.session_state.hy1
             elif ferramenta_ativa == "📐 Perspectiva: Sup. Dir. (2)": cx, cy = st.session_state.hx2, st.session_state.hy2
             elif ferramenta_ativa == "📐 Perspectiva: Inf. Dir. (3)": cx, cy = st.session_state.hx3, st.session_state.hy3
             elif ferramenta_ativa == "📐 Perspectiva: Inf. Esq. (4)": cx, cy = st.session_state.hx4, st.session_state.hy4
 
-        # 2. Só recorta e exibe a Lupa se o ponto já tiver saído do (0,0) inicial ou for a Origem
-        if cx is not None and cy is not None and (cx != 0 or cy != 0 or "Origem" in ferramenta_ativa):
-            RAIO = 40  # Vai recortar 40 pixels pra cada lado (janela real de 80x80)
-            
-            y_ini = max(0, cy - RAIO)
-            y_fim = min(altura_total, cy + RAIO)
-            x_ini = max(0, cx - RAIO)
-            x_fim = min(largura_total, cx + RAIO)
-
-            if y_fim > y_ini and x_fim > x_ini:
-                # Recorta a imagem LIMPA (sem as bolas amarelas gordas por cima)
-                crop = frame_ativo[y_ini:y_fim, x_ini:x_fim].copy()
-
-                # Desenha uma mira verde cirúrgica em cruz no pixel atual
-                rel_cx = cx - x_ini
-                rel_cy = cy - y_ini
-                cv2.line(crop, (rel_cx, 0), (rel_cx, crop.shape[0]), (0, 255, 0), 1)
-                cv2.line(crop, (0, rel_cy), (crop.shape[1], rel_cy), (0, 255, 0), 1)
-
-                # Amplia a imagem (INTER_NEAREST força a visualização "quadriculada" dos pixels)
-                FATOR_ZOOM = 4
-                crop_zoom = cv2.resize(crop, (crop.shape[1] * FATOR_ZOOM, crop.shape[0] * FATOR_ZOOM), interpolation=cv2.INTER_NEAREST)
-
-                crop_rgb = cv2.cvtColor(crop_zoom, cv2.COLOR_BGR2RGB)
+            if cx is not None and cy is not None and (cx != 0 or cy != 0 or "Origem" in ferramenta_ativa):
+                RAIO = 40  
                 
-                # Renderiza a lupa como uma imagem clicável independente
-                zoom_value = streamlit_image_coordinates(crop_rgb, key="zoom_click")
+                y_ini = max(0, cy - RAIO)
+                y_fim = min(altura_total, cy + RAIO)
+                x_ini = max(0, cx - RAIO)
+                x_fim = min(largura_total, cx + RAIO)
 
-                if zoom_value is not None:
-                    if st.session_state.get('last_zoom_click') != zoom_value:
-                        st.session_state.last_zoom_click = zoom_value
+                if y_fim > y_ini and x_fim > x_ini:
+                    crop = frame_ativo[y_ini:y_fim, x_ini:x_fim].copy()
 
-                        # Traduz o clique de dentro da lupa de volta para a coordenada global gigante
-                        x_crop_click = int(zoom_value["x"] / FATOR_ZOOM)
-                        y_crop_click = int(zoom_value["y"] / FATOR_ZOOM)
+                    rel_cx = cx - x_ini
+                    rel_cy = cy - y_ini
+                    cv2.line(crop, (rel_cx, 0), (rel_cx, crop.shape[0]), (0, 255, 0), 1)
+                    cv2.line(crop, (0, rel_cy), (crop.shape[1], rel_cy), (0, 255, 0), 1)
 
-                        x_global_click = int(x_ini + x_crop_click)
-                        y_global_click = int(y_ini + y_crop_click)
-                        y_inv_global = int(altura_total - y_global_click)
+                    FATOR_ZOOM = 4
+                    crop_zoom = cv2.resize(crop, (crop.shape[1] * FATOR_ZOOM, crop.shape[0] * FATOR_ZOOM), interpolation=cv2.INTER_NEAREST)
 
-                        # Salva o novo valor e manda a tela piscar (atualizando a cruz e as caixas lá embaixo)
-                        if ferramenta_ativa == "📍 Origem (0,0)": st.session_state.orig_x = x_global_click; st.session_state.orig_y = y_inv_global; st.rerun()
-                        elif ferramenta_ativa == "📏 Calibração: Ponto 1": st.session_state.x1 = x_global_click; st.session_state.y1 = y_inv_global; st.rerun()
-                        elif ferramenta_ativa == "📏 Calibração: Ponto 2": st.session_state.x2 = x_global_click; st.session_state.y2 = y_inv_global; st.rerun()
-                        elif ferramenta_ativa == "📦 Objeto: Canto Esquerdo/Inferior": st.session_state.obj_x = x_global_click; st.session_state.obj_y = y_inv_global; st.rerun()
-                        elif ferramenta_ativa == "📐 Perspectiva: Sup. Esq. (1)": st.session_state.hx1 = x_global_click; st.session_state.hy1 = y_global_click; st.rerun()
-                        elif ferramenta_ativa == "📐 Perspectiva: Sup. Dir. (2)": st.session_state.hx2 = x_global_click; st.session_state.hy2 = y_global_click; st.rerun()
-                        elif ferramenta_ativa == "📐 Perspectiva: Inf. Dir. (3)": st.session_state.hx3 = x_global_click; st.session_state.hy3 = y_global_click; st.rerun()
-                        elif ferramenta_ativa == "📐 Perspectiva: Inf. Esq. (4)": st.session_state.hx4 = x_global_click; st.session_state.hy4 = y_global_click; st.rerun()
+                    crop_rgb = cv2.cvtColor(crop_zoom, cv2.COLOR_BGR2RGB)
+                    
+                    zoom_value = streamlit_image_coordinates(crop_rgb, key="zoom_click")
+
+                    if zoom_value is not None:
+                        if st.session_state.get('last_zoom_click') != zoom_value:
+                            st.session_state.last_zoom_click = zoom_value
+
+                            x_crop_click = int(zoom_value["x"] / FATOR_ZOOM)
+                            y_crop_click = int(zoom_value["y"] / FATOR_ZOOM)
+
+                            x_global_click = int(x_ini + x_crop_click)
+                            y_global_click = int(y_ini + y_crop_click)
+                            y_inv_global = int(altura_total - y_global_click)
+
+                            if ferramenta_ativa == "📍 Origem (0,0)": st.session_state.orig_x = x_global_click; st.session_state.orig_y = y_inv_global; st.rerun()
+                            elif ferramenta_ativa == "📏 Calibração: Ponto 1": st.session_state.x1 = x_global_click; st.session_state.y1 = y_inv_global; st.rerun()
+                            elif ferramenta_ativa == "📏 Calibração: Ponto 2": st.session_state.x2 = x_global_click; st.session_state.y2 = y_inv_global; st.rerun()
+                            elif ferramenta_ativa == "📐 Perspectiva: Sup. Esq. (1)": st.session_state.hx1 = x_global_click; st.session_state.hy1 = y_global_click; st.rerun()
+                            elif ferramenta_ativa == "📐 Perspectiva: Sup. Dir. (2)": st.session_state.hx2 = x_global_click; st.session_state.hy2 = y_global_click; st.rerun()
+                            elif ferramenta_ativa == "📐 Perspectiva: Inf. Dir. (3)": st.session_state.hx3 = x_global_click; st.session_state.hy3 = y_global_click; st.rerun()
+                            elif ferramenta_ativa == "📐 Perspectiva: Inf. Esq. (4)": st.session_state.hx4 = x_global_click; st.session_state.hy4 = y_global_click; st.rerun()
         else:
-            # Painel amigável se nenhuma ferramenta estiver selecionada ou o ponto ainda for nulo
-            st.info("👆 Clique grosseiramente na imagem ao lado para travar a coordenada e ativar a Lupa de Precisão.")
+            st.markdown("### 🔍 Lupa")
+            st.info("👆 Selecione uma ferramenta de calibração e clique na imagem para ativar o ajuste de precisão.")
             
     st.markdown("---")
 
