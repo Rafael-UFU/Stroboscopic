@@ -664,10 +664,22 @@ if st.session_state.step == "configuration":
         
         st.markdown("#### 3. Algoritmo e Suavização")
         fator_dist = st.slider("Espaçamento de Captura", 0.01, 5.0, 0.5, 0.01)
+        
         st.markdown("**Filtro Savitzky-Golay:**")
-        #window_size = st.slider("Tamanho da Janela", min_value=5, max_value=51, value=11, step=2)
-        window_size = st.slider("Tamanho da Janela", min_value=5, max_value=int(max_janela), value=min(11, int(max_janela)), step=2)
-        poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
+        modo_filtro = st.radio("Modo de Ajuste", ["✨ Automático (Otimizado)", "🎛️ Manual (Ajuste Fino)"], horizontal=True)
+        
+        total_frames_corte = st.session_state.end_frame_for_analysis - st.session_state.start_frame_for_analysis + 1
+        max_janela = total_frames_corte if total_frames_corte % 2 != 0 else total_frames_corte - 1
+        if max_janela < 5: max_janela = 5
+        
+        if modo_filtro == "🎛️ Manual (Ajuste Fino)":
+            window_size = st.slider("Tamanho da Janela", min_value=5, max_value=int(max_janela), value=min(11, int(max_janela)), step=2)
+            poly_order = st.slider("Ordem do Polinômio", min_value=1, max_value=4, value=2)
+        else:
+            # Passa strings sinalizadoras para o motor interno
+            window_size = "auto"
+            poly_order = "auto"
+            st.caption("ℹ️ O sistema calculará estatisticamente a combinação ideal de janela e polinômio minimizando a autocorrelação dos resíduos.")
 
         #Adicionando o botão de ajuda expansível com as dicas didáticas
         with st.expander("❓ Como escolher os melhores parâmetros?"):
