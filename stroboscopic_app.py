@@ -243,29 +243,79 @@ def processar_video(video_bytes, initial_frame, start_frame_idx, end_frame_idx, 
     df_carimbos['pos_x_um'] = (df_carimbos['pos_x_px'] - origin_coords[0]) * scale_factor
     df_carimbos['pos_y_um'] = -(df_carimbos['pos_y_px'] - origin_coords[1]) * scale_factor
 
-    if len(df_carimbos) > window_size:
+    # Cálculo Cinemático (Savitzky-Golay vs Diferenças Finitas) 
+    if len(df_carimbos) > 5:
         dt = 1.0 / fps
         pos_x_raw = df_carimbos['pos_x_um'].to_numpy()
         pos_y_raw = df_carimbos['pos_y_um'].to_numpy()
         
-        df_carimbos['vx_um_s'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
-        df_carimbos['vy_um_s'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=poly_order, deriv=1, delta=dt)
+        # --- MOTOR DE OTIMIZAÇÃO POR ANÁLISE DE RESÍDUOS ---
+        if window_size == "auto":
+            total_pts = len(df_carimbos)
+            max_w = total_pts if total_pts % 2 != 0 else total_pts - 1
+            max_w = min(max_w, 51) # Teto prático para evitar achatamento excessivo em trajetórias longas
+            
+            w_opt, p_opt = 11, 2
+            min_score = float('inf')
+            
+            # Varre as ordens polinomiais estáveis para cinemática
+            for p_test in [2, 3, 4]:
+                for w_test in range(5, max_w + 1, 2):
+                    if w_test <= p_test: 
+                        continue
+                    try:
+                        # Aplica o filtro de teste
+                        fx = savgol_filter(pos_x_raw, window_length=w_test, polyorder=p_test)
+                        fy = savgol_filter(pos_y_raw, window_length=w_test, polyorder=p_test)
+                        
+                        # Extrai os resíduos isolados
+                        res_x = pos_x_raw - fx
+                        res_y = pos_y_raw - fy
+                        
+                        # Calcula a autocorrelação de lag-1 (Mede o quão aleatório/branco é o ruído)
+                        r1_x = np.corrcoef(res_x[:-1], res_x[1:])[0, 1]
+                        r1_y = np.corrcoef(res_y[:-1], res_y[1:])[0, 1]
+                        
+                        if np.isnan(r1_x) or np.isnan(r1_y): 
+                            continue
+                        
+                        # O objetivo estatístico é aproximar a correlação de zero
+                        score = abs(r1_x) + abs(r1_y)
+                        if score < min_score:
+                            min_score = score
+                            w_opt = w_test
+                            p_opt = p_test
+                    except:
+                        continue
+                        
+            w_final = w_opt
+            p_final = p_opt
+            msg_otimizacao = f" [Otimização Automática: Janela={w_final}, Ordem={p_final}]"
+        else:
+            w_final = int(window_size)
+            p_final = int(poly_order)
+            msg_otimizacao = ""
         
-        ordem_acc = poly_order if poly_order >= 2 else 2
-        df_carimbos['ax_um_s2'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=ordem_acc, deriv=2, delta=dt)
-        df_carimbos['ay_um_s2'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=ordem_acc, deriv=2, delta=dt)
+        # --- APLICAÇÃO DOS FILTROS COM OS PARÂMETROS DEFINIDOS ---
+        df_carimbos['vx_um_s'] = savgol_filter(pos_x_raw, window_length=w_final, polyorder=p_final, deriv=1, delta=dt)
+        df_carimbos['vy_um_s'] = savgol_filter(pos_y_raw, window_length=w_final, polyorder=p_final, deriv=1, delta=dt)
         
-        df_carimbos['pos_x_um'] = savgol_filter(pos_x_raw, window_length=window_size, polyorder=poly_order, deriv=0)
-        df_carimbos['pos_y_um'] = savgol_filter(pos_y_raw, window_length=window_size, polyorder=poly_order, deriv=0)
+        ordem_acc = p_final if p_final >= 2 else 2
+        df_carimbos['ax_um_s2'] = savgol_filter(pos_x_raw, window_length=w_final, polyorder=ordem_acc, deriv=2, delta=dt)
+        df_carimbos['ay_um_s2'] = savgol_filter(pos_y_raw, window_length=w_final, polyorder=ordem_acc, deriv=2, delta=dt)
+        
+        df_carimbos['pos_x_um'] = savgol_filter(pos_x_raw, window_length=w_final, polyorder=p_final, deriv=0)
+        df_carimbos['pos_y_um'] = savgol_filter(pos_y_raw, window_length=w_final, polyorder=p_final, deriv=0)
     else:
         delta_t = df_carimbos['tempo_s'].diff()
         df_carimbos['vx_um_s'] = df_carimbos['pos_x_um'].diff() / delta_t
         df_carimbos['vy_um_s'] = df_carimbos['pos_y_um'].diff() / delta_t
         df_carimbos['ax_um_s2'] = df_carimbos['vx_um_s'].diff() / delta_t
         df_carimbos['ay_um_s2'] = df_carimbos['vy_um_s'].diff() / delta_t
+        msg_otimizacao = ""
     
     df_final = df_carimbos.fillna(0)
-    status_text_element.success(f"Processamento concluído! {len(df_final)} pontos extraídos.")
+    status_text_element.success(f"Processamento concluído! {len(df_final)} pontos extraídos.{msg_otimizacao}")
     
     _, buffer_img_estrob = cv2.imencode('.PNG', imagem_estroboscopica)
     img_estrob_bytes = BytesIO(buffer_img_estrob).getvalue()
