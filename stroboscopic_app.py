@@ -752,7 +752,14 @@ if st.session_state.step == "configuration":
     st.markdown("---")
     
     # 6. INÍCIO DA ANÁLISE COM VARIÁVEIS BLINDADAS
-    if window_size <= poly_order:
+    # --- VALIDAÇÃO BLINDADA ANTI-ERRO DE STRINGS ("auto") ---
+    # Só barra se o usuário estiver no modo manual e colocar valores matematicamente impossíveis
+    erro_config = False
+    if isinstance(window_size, int) and isinstance(poly_order, int):
+        if window_size <= poly_order:
+            erro_config = True
+
+    if erro_config:
         st.error("Erro: O tamanho da janela do filtro deve ser maior que a ordem do polinômio.")
     else:
         if st.button("🚀 Iniciar Análise", type="primary", use_container_width=True):
